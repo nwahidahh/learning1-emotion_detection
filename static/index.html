@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learning Platform — Emotion Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Emotion & Engagement Monitor (Arousal–Valence)</h1>
+      <section id="consent">
+        <p>This page uses your webcam to estimate arousal and valence. No raw video is stored. Proceed only if you consent.</p>
+        <button id="consentBtn">I consent & start</button>
+      </section>
+
+      <section id="monitor" style="display:none">
+        <div class="video-col">
+          <video id="video" autoplay playsinline width="320" height="240"></video>
+          <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
+          <div class="controls">
+            <button id="startSession">Start Session</button>
+            <button id="stopSession">Stop Session</button>
+          </div>
+        </div>
+        <div class="charts-col">
+          <div>Latest: <span id="latest"></span></div>
+          <canvas id="timelineChart" height="200"></canvas>
+          <canvas id="scatterChart" height="200"></canvas>
+        </div>
+      </section>
+
+      <footer>
+        <small>Prototype — do not use without consent and IRB approval for research.</small>
+      </footer>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

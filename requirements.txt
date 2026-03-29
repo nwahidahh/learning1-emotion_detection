@@ -1,0 +1,11 @@
+fastapi==0.95.2
+uvicorn[standard]==0.22.0
+SQLAlchemy==2.0.20
+alembic==1.11.1
+pydantic==1.10.12
+python-multipart==0.0.6
+aiofiles==23.1.0
+Pillow==10.0.1
+opencv-python-headless==4.8.1.78
+mediapipe==0.10.1
+jinja2==3.1.2
