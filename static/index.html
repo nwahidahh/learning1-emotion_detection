@@ -17,7 +17,11 @@
 
       <section id="monitor" style="display:none">
         <div class="video-col">
-          <video id="video" autoplay playsinline width="320" height="240"></video>
+          <div class="video-wrap">
+            <video id="video" autoplay playsinline width="320" height="240"></video>
+            <canvas id="overlay" width="320" height="240"></canvas>
+            <div id="bboxRect" aria-hidden="true"></div>
+          </div>
           <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
           <div class="controls">
             <button id="startSession">Start Session</button>

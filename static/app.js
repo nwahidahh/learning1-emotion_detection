@@ -1,9 +1,13 @@
 let video = null;
 let canvas = null;
 let ctx = null;
+let overlayCanvas = null;
+let overlayCtx = null;
+let bboxRect = null;
 let stream = null;
 let sessionId = null;
 let studentId = 1; // simple default for demo
+let captureLoop = null;
 
 const consentBtn = document.getElementById('consentBtn');
 const monitor = document.getElementById('monitor');
@@ -20,10 +24,21 @@ consentBtn.addEventListener('click', async () => {
 async function startCamera(){
   video = document.getElementById('video');
   canvas = document.getElementById('canvas');
+  overlayCanvas = document.getElementById('overlay');
+  bboxRect = document.getElementById('bboxRect');
   ctx = canvas.getContext('2d');
+  overlayCtx = overlayCanvas.getContext('2d');
   try{
     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     video.srcObject = stream;
+    video.addEventListener('loadedmetadata', () => {
+      const w = video.videoWidth || 320;
+      const h = video.videoHeight || 240;
+      canvas.width = w;
+      canvas.height = h;
+      overlayCanvas.width = w;
+      overlayCanvas.height = h;
+    }, { once: true });
     video.play();
   }catch(e){
     alert('Could not access camera: ' + e.message);
@@ -38,11 +53,13 @@ startBtn.addEventListener('click', async ()=>{
   const j = await r.json();
   sessionId = j.session_id;
   // start periodic capture
+  if(captureLoop) clearInterval(captureLoop);
   captureLoop = setInterval(captureAndSend, 1000);
 });
 
 stopBtn.addEventListener('click', async ()=>{
-  clearInterval(window.captureLoop);
+  clearInterval(captureLoop);
+  captureLoop = null;
   if(sessionId){
     const fd = new FormData();
     fd.append('session_id', sessionId);
@@ -59,8 +76,19 @@ async function captureAndSend(){
     const fd = new FormData();
     fd.append('file', blob, 'frame.jpg');
     const resp = await fetch('/predict', { method: 'POST', body: fd });
+    if(!resp.ok){
+      drawBoundingBox(null);
+      let msg = 'predict failed';
+      try{
+        const err = await resp.json();
+        if(err && err.detail) msg = err.detail;
+      }catch(_e){}
+      latest.innerText = msg;
+      return;
+    }
     const data = await resp.json();
-    latest.innerText = `valence=${data.valence.toFixed(2)} arousal=${data.arousal.toFixed(2)}`;
+    latest.innerText = `valence=${data.valence.toFixed(2)} arousal=${data.arousal.toFixed(2)} source=${(data.bbox && data.bbox.source) || 'none'}`;
+    drawBoundingBox(data.bbox, { width: data.frame_width, height: data.frame_height });
     // log to backend
     const logfd = new FormData();
     logfd.append('student_id', studentId);
@@ -71,6 +99,37 @@ async function captureAndSend(){
     // update charts
     pushTimeline(data);
   }, 'image/jpeg', 0.8);
+}
+
+function drawBoundingBox(bbox, frameSize){
+  if(!overlayCtx || !overlayCanvas || !bboxRect) return;
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if(!bbox || bbox.width <= 0 || bbox.height <= 0){
+    bboxRect.style.display = 'none';
+    return;
+  }
+
+  const sourceW = (frameSize && frameSize.width) ? Number(frameSize.width) : overlayCanvas.width;
+  const sourceH = (frameSize && frameSize.height) ? Number(frameSize.height) : overlayCanvas.height;
+  const targetW = overlayCanvas.clientWidth || overlayCanvas.width;
+  const targetH = overlayCanvas.clientHeight || overlayCanvas.height;
+  const scaleX = sourceW > 0 ? (targetW / sourceW) : 1;
+  const scaleY = sourceH > 0 ? (targetH / sourceH) : 1;
+
+  const x = Math.max(0, Math.round(Number(bbox.x) * scaleX));
+  const y = Math.max(0, Math.round(Number(bbox.y) * scaleY));
+  const w = Math.max(1, Math.round(Number(bbox.width) * scaleX));
+  const h = Math.max(1, Math.round(Number(bbox.height) * scaleY));
+
+  bboxRect.style.display = 'block';
+  bboxRect.style.left = `${x}px`;
+  bboxRect.style.top = `${y}px`;
+  bboxRect.style.width = `${w}px`;
+  bboxRect.style.height = `${h}px`;
+
+  overlayCtx.strokeStyle = '#00ff7f';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.strokeRect(x, y, w, h);
 }
 
 // --- simple Chart.js timeline + scatter ---

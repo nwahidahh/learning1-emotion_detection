@@ -1,0 +1,8 @@
+*.pt
+*.db
+.venv/
+venv/
+venvbaru/
+__pycache__/
+*.pyc
+.DS_Store

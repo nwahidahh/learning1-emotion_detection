@@ -4,9 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from db import init_db, SessionLocal
 from models import User, Session, EmotionLog
-from predictor import load_model, predict_from_image_bytes
+from predictor import load_model, predict_from_image_bytes, NoFaceDetectedError
 from sqlalchemy.orm import Session as DBSession
-from datetime import datetime
+from datetime import datetime, timedelta
 import uvicorn
 
 
@@ -22,9 +22,23 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="./static"), name="static")
 
-# init DB and model
+
+# init DB
 init_db()
-model = load_model()
+import os
+
+# Try to load model if path is set, else auto-use local enet_b0_8_va_mtl.pt if present
+DEFAULT_LOCAL_MODEL = "./enet_b0_8_va_mtl.pt"
+MODEL_PATH = os.environ.get("MODEL_PATH") or os.environ.get("ONNX_MODEL_PATH")
+if not MODEL_PATH and os.path.exists(DEFAULT_LOCAL_MODEL):
+    MODEL_PATH = DEFAULT_LOCAL_MODEL
+
+model = None
+if MODEL_PATH:
+    try:
+        model = load_model(MODEL_PATH)
+    except Exception as e:
+        print(f"Failed to load model from {MODEL_PATH}: {e}")
 
 
 def get_db():
@@ -42,9 +56,13 @@ def health():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
+    if model is None:
+        raise HTTPException(status_code=503, detail="No model loaded. Set MODEL_PATH (or ONNX_MODEL_PATH) to a .onnx/.pt/.pth file.")
     data = await file.read()
     try:
         out = predict_from_image_bytes(data, model=model)
+    except NoFaceDetectedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"timestamp": datetime.utcnow().isoformat(), **out}
@@ -53,7 +71,25 @@ async def predict(file: UploadFile = File(...)):
 @app.post("/emotion/log")
 async def emotion_log(student_id: int = Form(...), session_id: int = Form(None), valence: float = Form(...), arousal: float = Form(...)):
     db = next(get_db())
-    log = EmotionLog(student_id=student_id, session_id=session_id, valence=valence, arousal=arousal, timestamp=datetime.utcnow())
+    now = datetime.utcnow()
+    latest_query = db.query(EmotionLog).filter(EmotionLog.student_id == student_id)
+    if session_id is None:
+        latest_query = latest_query.filter(EmotionLog.session_id.is_(None))
+    else:
+        latest_query = latest_query.filter(EmotionLog.session_id == session_id)
+    latest_log = latest_query.order_by(EmotionLog.timestamp.desc()).first()
+
+    interval_seconds = 10
+    if latest_log and (now - latest_log.timestamp) < timedelta(seconds=interval_seconds):
+        remaining = interval_seconds - int((now - latest_log.timestamp).total_seconds())
+        return {
+            "status": "skipped",
+            "reason": "interval_not_reached",
+            "next_capture_in_seconds": max(remaining, 0),
+            "last_log_id": latest_log.id,
+        }
+
+    log = EmotionLog(student_id=student_id, session_id=session_id, valence=valence, arousal=arousal, timestamp=now)
     db.add(log)
     db.commit()
     db.refresh(log)
