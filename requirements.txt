@@ -13,3 +13,4 @@ Pillow==10.0.1
 opencv-python-headless==4.8.1.78
 mediapipe==0.10.13
 jinja2==3.1.2
+python-jose[cryptography]==3.3.0

@@ -10,9 +10,49 @@
   <body>
     <main>
       <h1>Emotion & Engagement Monitor (Arousal–Valence)</h1>
-      <section id="consent">
-        <p>This page uses your webcam to estimate arousal and valence. No raw video is stored. Proceed only if you consent.</p>
-        <button id="consentBtn">I consent & start</button>
+
+      <section id="authSection">
+        <div class="panel">
+          <h2>Login</h2>
+          <input id="loginEmail" type="email" placeholder="Email" />
+          <input id="loginPassword" type="password" placeholder="Password" />
+          <button id="loginBtn">Login</button>
+        </div>
+        <div class="panel">
+          <h2>Register</h2>
+          <input id="registerName" type="text" placeholder="Name" />
+          <input id="registerEmail" type="email" placeholder="Email" />
+          <input id="registerPassword" type="password" placeholder="Password" />
+          <select id="registerRole">
+            <option value="student">Student</option>
+            <option value="teacher">Teacher</option>
+          </select>
+          <button id="registerBtn">Register</button>
+        </div>
+      </section>
+
+      <section id="userSection" style="display:none">
+        <p>Signed in as: <strong id="userInfo"></strong></p>
+        <button id="logoutBtn">Logout</button>
+      </section>
+
+      <section id="consentSection" style="display:none">
+        <p>
+          This page uses your webcam to estimate arousal and valence. No raw video is stored.
+          Participation requires active consent.
+        </p>
+        <div class="inline-actions">
+          <button id="consentAcceptBtn">Accept Consent</button>
+          <button id="consentWithdrawBtn">Withdraw Consent</button>
+        </div>
+        <small id="consentStatus"></small>
+      </section>
+
+      <section id="materialSection" style="display:none">
+        <h3>Assigned Learning Materials</h3>
+        <select id="materialSelect">
+          <option value="">No material selected</option>
+        </select>
       </section>
 
       <section id="monitor" style="display:none">
@@ -33,6 +73,16 @@
           <canvas id="timelineChart" height="200"></canvas>
           <canvas id="scatterChart" height="200"></canvas>
         </div>
+      </section>
+
+      <section id="teacherSection" style="display:none">
+        <h3>Teacher Dashboard (Summary)</h3>
+        <button id="refreshTeacherBtn">Refresh Report</button>
+        <pre id="teacherReport"></pre>
+      </section>
+
+      <section id="messageSection">
+        <small id="appMessage"></small>
       </section>
 
       <footer>
