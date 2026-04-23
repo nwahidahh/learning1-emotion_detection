@@ -7,6 +7,8 @@ let bboxRect = null;
 let stream = null;
 let sessionId = null;
 let captureLoop = null;
+let timelineChart = null;
+let scatterChart = null;
 
 let authToken = localStorage.getItem('authToken') || null;
 let currentUser = null;
@@ -41,8 +43,25 @@ const stopBtn = document.getElementById('stopSession');
 const refreshTeacherBtn = document.getElementById('refreshTeacherBtn');
 const teacherReport = document.getElementById('teacherReport');
 
+const currentPage = (window.location.pathname.split('/').pop() || '').toLowerCase();
+const isLoginPage = currentPage === 'login.html';
+const isRegisterPage = currentPage === 'register.html';
+const isMainPage = currentPage === 'main.html';
+
+function redirectTo(url){
+  if(window.location.pathname !== url){
+    window.location.assign(url);
+  }
+}
+
 function showMessage(msg){
-  appMessage.innerText = msg || '';
+  if(appMessage) appMessage.innerText = msg || '';
+}
+
+function setDisplay(element, value){
+  if(element && element.style){
+    element.style.display = value;
+  }
 }
 
 async function apiFetch(url, options = {}){
@@ -58,9 +77,15 @@ async function apiFetch(url, options = {}){
 
 async function bootstrap(){
   if(!authToken){
-    renderLoggedOut();
+    if(isMainPage) redirectTo('/static/login.html');
     return;
   }
+
+  if(isLoginPage || isRegisterPage){
+    redirectTo('/static/main.html');
+    return;
+  }
+
   try{
     const resp = await apiFetch('/auth/me');
     if(!resp.ok) throw new Error('Failed to load user');
@@ -73,32 +98,38 @@ async function bootstrap(){
 }
 
 function renderLoggedOut(){
-  authSection.style.display = 'flex';
-  userSection.style.display = 'none';
-  consentSection.style.display = 'none';
-  materialSection.style.display = 'none';
-  monitor.style.display = 'none';
-  teacherSection.style.display = 'none';
+  setDisplay(authSection, 'flex');
+  setDisplay(userSection, 'none');
+  setDisplay(consentSection, 'none');
+  setDisplay(materialSection, 'none');
+  setDisplay(monitor, 'none');
+  setDisplay(teacherSection, 'none');
 }
 
 async function renderLoggedIn(){
-  authSection.style.display = 'none';
-  userSection.style.display = 'flex';
-  userInfo.innerText = `${currentUser.name} (${currentUser.role})`;
+  if(!isMainPage){
+    redirectTo('/static/main.html');
+    return;
+  }
+
+  setDisplay(authSection, 'none');
+  setDisplay(userSection, 'flex');
+  if(userInfo) userInfo.innerText = `${currentUser.name} (${currentUser.role})`;
 
   if(currentUser.role === 'student'){
-    consentSection.style.display = 'block';
-    materialSection.style.display = 'block';
-    monitor.style.display = 'flex';
-    teacherSection.style.display = 'none';
+    setDisplay(consentSection, 'block');
+    setDisplay(materialSection, 'block');
+    setDisplay(monitor, 'flex');
+    setDisplay(teacherSection, 'none');
     await loadConsentStatus();
     await loadMaterials();
+    initCharts();
     await startCamera();
   } else {
-    consentSection.style.display = 'none';
-    materialSection.style.display = 'none';
-    monitor.style.display = 'none';
-    teacherSection.style.display = 'block';
+    setDisplay(consentSection, 'none');
+    setDisplay(materialSection, 'none');
+    setDisplay(monitor, 'none');
+    setDisplay(teacherSection, 'block');
     await loadTeacherReport();
   }
 }
@@ -116,59 +147,69 @@ function handleLogout(){
     stream = null;
   }
   sessionId = null;
-  renderLoggedOut();
+  if(isMainPage){
+    renderLoggedOut();
+    redirectTo('/static/login.html');
+  }
 }
 
-loginBtn.addEventListener('click', async ()=>{
-  try{
-    const fd = new URLSearchParams();
-    fd.append('username', loginEmail.value.trim());
-    fd.append('password', loginPassword.value);
-    const resp = await fetch('/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: fd
-    });
-    const data = await resp.json();
-    if(!resp.ok) throw new Error(data.detail || 'Login failed');
-    authToken = data.access_token;
-    localStorage.setItem('authToken', authToken);
-    showMessage('Login successful.');
-    await bootstrap();
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+if(loginBtn){
+  loginBtn.addEventListener('click', async ()=>{
+    try{
+      const fd = new URLSearchParams();
+      fd.append('username', (loginEmail && loginEmail.value || '').trim());
+      fd.append('password', loginPassword && loginPassword.value || '');
+      const resp = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: fd
+      });
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.detail || 'Login failed');
+      authToken = data.access_token;
+      localStorage.setItem('authToken', authToken);
+      showMessage('Login successful. Redirecting...');
+      window.location.replace('/static/main.html');
+    }catch(err){
+      showMessage(err.message);
+    }
+  });
+}
 
-registerBtn.addEventListener('click', async ()=>{
-  try{
-    const resp = await fetch('/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: registerName.value.trim(),
-        email: registerEmail.value.trim(),
-        password: registerPassword.value,
-        role: registerRole.value,
-      })
-    });
-    const data = await resp.json();
-    if(!resp.ok) throw new Error(data.detail || 'Register failed');
-    authToken = data.access_token;
-    localStorage.setItem('authToken', authToken);
-    showMessage('Registration successful.');
-    await bootstrap();
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+if(registerBtn){
+  registerBtn.addEventListener('click', async ()=>{
+    try{
+      const resp = await fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: (registerName && registerName.value || '').trim(),
+          email: (registerEmail && registerEmail.value || '').trim(),
+          password: registerPassword && registerPassword.value || '',
+          role: registerRole && registerRole.value || 'student',
+        })
+      });
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.detail || 'Register failed');
+      authToken = data.access_token;
+      localStorage.setItem('authToken', authToken);
+      showMessage('Registration successful. Redirecting...');
+      window.location.replace('/static/main.html');
+    }catch(err){
+      showMessage(err.message);
+    }
+  });
+}
 
-logoutBtn.addEventListener('click', ()=>{
-  handleLogout();
-  showMessage('Logged out.');
-});
+if(logoutBtn){
+  logoutBtn.addEventListener('click', ()=>{
+    handleLogout();
+    showMessage('Logged out.');
+  });
+}
 
 async function loadConsentStatus(){
+  if(!consentStatus) return;
   const resp = await apiFetch('/consent/me');
   if(!resp.ok){
     consentStatus.innerText = 'Unable to load consent status.';
@@ -179,34 +220,41 @@ async function loadConsentStatus(){
     consentStatus.innerText = 'Consent status: not provided.';
     return;
   }
+  setDisplay(consentSection, data.status === 'accepted' ? 'none' : 'block');
   consentStatus.innerText = `Consent status: ${data.status} (${new Date(data.timestamp).toLocaleString()})`;
 }
 
-consentAcceptBtn.addEventListener('click', async ()=>{
-  try{
-    const resp = await apiFetch('/consent/accept', { method: 'POST' });
-    const data = await resp.json();
-    if(!resp.ok) throw new Error(data.detail || 'Failed to update consent');
-    consentStatus.innerText = `Consent status: ${data.status} (${new Date(data.timestamp).toLocaleString()})`;
-    showMessage('Consent accepted.');
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+if(consentAcceptBtn){
+  consentAcceptBtn.addEventListener('click', async ()=>{
+    try{
+      const resp = await apiFetch('/consent/accept', { method: 'POST' });
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.detail || 'Failed to update consent');
+      setDisplay(consentSection, data.status === 'accepted' ? 'none' : 'block');
+      consentStatus.innerText = `Consent status: ${data.status} (${new Date(data.timestamp).toLocaleString()})`;
+      showMessage('Consent accepted.');
+    }catch(err){
+      showMessage(err.message);
+    }
+  });
+}
 
-consentWithdrawBtn.addEventListener('click', async ()=>{
-  try{
-    const resp = await apiFetch('/consent/withdraw', { method: 'POST' });
-    const data = await resp.json();
-    if(!resp.ok) throw new Error(data.detail || 'Failed to update consent');
-    consentStatus.innerText = `Consent status: ${data.status} (${new Date(data.timestamp).toLocaleString()})`;
-    showMessage('Consent withdrawn. New sessions are blocked.');
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+if(consentWithdrawBtn){
+  consentWithdrawBtn.addEventListener('click', async ()=>{
+    try{
+      const resp = await apiFetch('/consent/withdraw', { method: 'POST' });
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.detail || 'Failed to update consent');
+      consentStatus.innerText = `Consent status: ${data.status} (${new Date(data.timestamp).toLocaleString()})`;
+      showMessage('Consent withdrawn. New sessions are blocked.');
+    }catch(err){
+      showMessage(err.message);
+    }
+  });
+}
 
 async function loadMaterials(){
+  if(!materialSelect) return;
   materialSelect.innerHTML = '<option value="">No material selected</option>';
   try{
     const resp = await apiFetch('/materials');
@@ -224,6 +272,7 @@ async function loadMaterials(){
 }
 
 async function loadTeacherReport(){
+  if(!teacherReport) return;
   try{
     const resp = await apiFetch('/teacher/dashboard');
     const data = await resp.json();
@@ -234,7 +283,9 @@ async function loadTeacherReport(){
   }
 }
 
-refreshTeacherBtn.addEventListener('click', loadTeacherReport);
+if(refreshTeacherBtn){
+  refreshTeacherBtn.addEventListener('click', loadTeacherReport);
+}
 
 async function startCamera(){
   if(stream) return;
@@ -242,6 +293,7 @@ async function startCamera(){
   canvas = document.getElementById('canvas');
   overlayCanvas = document.getElementById('overlay');
   bboxRect = document.getElementById('bboxRect');
+  if(!video || !canvas || !overlayCanvas || !bboxRect) return;
   ctx = canvas.getContext('2d');
   overlayCtx = overlayCanvas.getContext('2d');
   try{
@@ -261,37 +313,41 @@ async function startCamera(){
   }
 }
 
-startBtn.addEventListener('click', async ()=>{
-  if(!currentUser || currentUser.role !== 'student') return;
-  try{
-    const materialIdPart = materialSelect.value ? `?material_id=${encodeURIComponent(materialSelect.value)}` : '';
-    const resp = await apiFetch(`/session/start${materialIdPart}`, { method: 'POST' });
-    const data = await resp.json();
-    if(!resp.ok) throw new Error(data.detail || 'Failed to start session');
-    sessionId = data.session_id;
-    if(captureLoop) clearInterval(captureLoop);
-    captureLoop = setInterval(captureAndSend, 1000);
-    showMessage(`Session started: ${sessionId}`);
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+if(startBtn){
+  startBtn.addEventListener('click', async ()=>{
+    if(!currentUser || currentUser.role !== 'student') return;
+    try{
+      const materialIdPart = materialSelect && materialSelect.value ? `?material_id=${encodeURIComponent(materialSelect.value)}` : '';
+      const resp = await apiFetch(`/session/start${materialIdPart}`, { method: 'POST' });
+      const data = await resp.json();
+      if(!resp.ok) throw new Error(data.detail || 'Failed to start session');
+      sessionId = data.session_id;
+      if(captureLoop) clearInterval(captureLoop);
+      captureLoop = setInterval(captureAndSend, 1000);
+      showMessage(`Session started: ${sessionId}`);
+    }catch(err){
+      showMessage(err.message);
+    }
+  });
+}
 
-stopBtn.addEventListener('click', async ()=>{
-  try{
-    if(captureLoop){
-      clearInterval(captureLoop);
-      captureLoop = null;
+if(stopBtn){
+  stopBtn.addEventListener('click', async ()=>{
+    try{
+      if(captureLoop){
+        clearInterval(captureLoop);
+        captureLoop = null;
+      }
+      if(sessionId){
+        await apiFetch(`/session/stop?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+        showMessage(`Session stopped: ${sessionId}`);
+        sessionId = null;
+      }
+    }catch(err){
+      showMessage(err.message);
     }
-    if(sessionId){
-      await apiFetch(`/session/stop?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' });
-      showMessage(`Session stopped: ${sessionId}`);
-      sessionId = null;
-    }
-  }catch(err){
-    showMessage(err.message);
-  }
-});
+  });
+}
 
 async function captureAndSend(){
   if(!video || video.readyState < 2 || !sessionId) return;
@@ -313,6 +369,7 @@ async function captureAndSend(){
       }
 
       const data = await resp.json();
+      if(!latest) return;
       latest.innerText = `valence=${data.valence.toFixed(2)} arousal=${data.arousal.toFixed(2)} source=${(data.bbox && data.bbox.source) || 'none'}`;
       drawBoundingBox(data.bbox, { width: data.frame_width, height: data.frame_height });
 
@@ -364,26 +421,33 @@ function drawBoundingBox(bbox, frameSize){
   bboxRect.style.height = `${h}px`;
 }
 
-// --- simple Chart.js timeline + scatter ---
-const timelineCtx = document.getElementById('timelineChart').getContext('2d');
-const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+function initCharts(){
+  if(timelineChart && scatterChart) return;
+  const timelineCanvas = document.getElementById('timelineChart');
+  const scatterCanvas = document.getElementById('scatterChart');
+  if(!timelineCanvas || !scatterCanvas || typeof Chart === 'undefined') return;
 
-const timelineChart = new Chart(timelineCtx, {
-  type: 'line',
-  data: { labels: [], datasets: [
-    { label: 'Valence', data: [], borderColor: 'blue', fill:false},
-    { label: 'Arousal', data: [], borderColor: 'red', fill:false}
-  ]},
-  options: { animation: false }
-});
+  const timelineCtx = timelineCanvas.getContext('2d');
+  const scatterCtx = scatterCanvas.getContext('2d');
 
-const scatterChart = new Chart(scatterCtx, {
-  type: 'scatter',
-  data: { datasets: [{ label: 'Arousal vs Valence', data: [], backgroundColor: 'purple' }] },
-  options: { animation: false, scales: { x: { title: { display: true, text: 'Valence (-1..1)' } }, y: { title: { display: true, text: 'Arousal (0..1)' } } } }
-});
+  timelineChart = new Chart(timelineCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Valence', data: [], borderColor: 'blue', fill:false},
+      { label: 'Arousal', data: [], borderColor: 'red', fill:false}
+    ]},
+    options: { animation: false }
+  });
+
+  scatterChart = new Chart(scatterCtx, {
+    type: 'scatter',
+    data: { datasets: [{ label: 'Arousal vs Valence', data: [], backgroundColor: 'purple' }] },
+    options: { animation: false, scales: { x: { title: { display: true, text: 'Valence (-1..1)' } }, y: { title: { display: true, text: 'Arousal (0..1)' } } } }
+  });
+}
 
 function pushTimeline(d){
+  if(!timelineChart || !scatterChart) return;
   const t = new Date().toLocaleTimeString();
   timelineChart.data.labels.push(t);
   timelineChart.data.datasets[0].data.push(d.valence);

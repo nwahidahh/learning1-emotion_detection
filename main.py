@@ -608,7 +608,7 @@ def class_report_compat(
 
 @app.get("/")
 def root():
-    return FileResponse("./static/index.html")
+    return FileResponse("./static/login.html")
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ export JWT_SECRET_KEY="your-strong-secret"
 uvicorn main:app --reload
 ```
 
-4. Open the frontend: http://localhost:8000/static/index.html
+4. Open the frontend: http://localhost:8000/static/login.html
 
 Implemented MVP (phase 1)
 - Email/password authentication with JWT (`/auth/register`, `/auth/login`, `/auth/me`)
@@ -43,7 +43,7 @@ Files added
 - `main.py` — FastAPI app and REST endpoints
 - `db.py`, `models.py` — SQLite + SQLAlchemy schema
 - `predictor.py` — placeholder predictor (where to plug a real model)
-- `static/` — frontend assets (`index.html`, `app.js`, `styles.css`)
+- `static/` — frontend assets (`main.html`, `app.js`, `styles.css`)
 - `requirements.txt` — dependencies
 
 Next steps

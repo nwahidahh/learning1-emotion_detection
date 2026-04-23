@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Register — Emotion Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Emotion & Engagement Monitor (Arousal–Valence)</h1>
+
+      <section id="authSection">
+        <div class="panel">
+          <h2>Register</h2>
+          <input id="registerName" type="text" placeholder="Name" />
+          <input id="registerEmail" type="email" placeholder="Email" />
+          <input id="registerPassword" type="password" placeholder="Password" />
+          <select id="registerRole">
+            <option value="student">Student</option>
+            <option value="teacher">Teacher</option>
+          </select>
+          <button id="registerBtn">Register</button>
+          <small>Already have an account? <a href="/static/login.html">Login</a></small>
+        </div>
+      </section>
+
+      <section id="messageSection">
+        <small id="appMessage"></small>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=20260423"></script>
+  </body>
+</html>
