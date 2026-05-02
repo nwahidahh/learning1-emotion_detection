@@ -6,3 +6,5 @@ venvbaru/
 __pycache__/
 *.pyc
 .DS_Store
+uploads
+emotion.db

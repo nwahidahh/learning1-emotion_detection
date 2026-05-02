@@ -44,6 +44,18 @@ def _migrate_sqlite_schema(engine):
             _ensure_column(conn, "emotion_logs", "model_version", "model_version VARCHAR")
             _ensure_column(conn, "emotion_logs", "source", "source VARCHAR DEFAULT 'client'")
 
+        if "learning_materials" in existing_tables:
+            _ensure_column(conn, "learning_materials", "external_url", "external_url VARCHAR")
+            _ensure_column(conn, "learning_materials", "instruction", "instruction TEXT")
+
+        if "material_comments" in existing_tables:
+            _ensure_column(conn, "material_comments", "parent_comment_id", "parent_comment_id INTEGER")
+
+        if "admin_audit_logs" in existing_tables:
+            _ensure_column(conn, "admin_audit_logs", "entity_type", "entity_type VARCHAR")
+            _ensure_column(conn, "admin_audit_logs", "entity_id", "entity_id INTEGER")
+            _ensure_column(conn, "admin_audit_logs", "detail", "detail TEXT")
+
 
 def init_db(engine=engine):
     Base.metadata.create_all(bind=engine)

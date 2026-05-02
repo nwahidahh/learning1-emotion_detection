@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Student — Emotion Monitor</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="bg-body-tertiary">
+    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+      <div class="container d-flex justify-content-end align-items-center gap-3">
+        <p class="mb-0 small">Signed in as: <strong id="userInfo"></strong></p>
+        <button id="logoutBtn" class="btn btn-outline-danger btn-sm">Logout</button>
+      </div>
+    </nav>
+
+    <main class="container py-4">
+      <header class="mb-4">
+        <h1 class="h3 mb-1">Student Learning & Emotion Tracking</h1>
+        <p class="text-body-secondary mb-0">Assigned materials, comments/questions, and session monitoring</p>
+      </header>
+
+      <section id="consentSection" class="card shadow-sm border-0 mb-3" style="display:none">
+        <div class="card-body">
+          <h2 class="h5">Consent</h2>
+          <p class="text-body-secondary mb-3">Active consent is required before starting a tracking session.</p>
+          <div class="d-flex gap-2 mb-2">
+            <button id="consentAcceptBtn" class="btn btn-primary">Accept Consent</button>
+            <button id="consentWithdrawBtn" class="btn btn-outline-secondary">Withdraw Consent</button>
+          </div>
+          <div id="consentStatus" class="small text-body-secondary"></div>
+        </div>
+      </section>
+
+      <section class="card shadow-sm border-0 mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h5 mb-0">Assigned Materials</h2>
+            <span id="lastOpenedBadge" class="badge text-bg-primary">Last opened: none</span>
+          </div>
+          <div class="row g-3">
+            <div class="col-12 col-lg-6">
+              <label for="studentMaterials" class="form-label">Materials</label>
+              <select id="studentMaterials" class="form-select"></select>
+            </div>
+            <div class="col-12 col-lg-3 d-grid align-self-end">
+              <button id="openMaterialBtn" class="btn btn-outline-primary">Open/Visit Material</button>
+            </div>
+          </div>
+          <div id="materialDetail" class="border rounded p-3 mt-3 small text-body-secondary"></div>
+
+          <hr />
+
+          <h3 class="h6">Comments / Questions</h3>
+          <div class="row g-2 mb-2">
+            <div class="col-12 col-lg-9">
+              <textarea id="commentText" class="form-control" rows="2" maxlength="1000" placeholder="Ask a question or add a comment"></textarea>
+            </div>
+            <div class="col-12 col-lg-3 d-grid">
+              <button id="submitCommentBtn" class="btn btn-primary">Submit</button>
+            </div>
+          </div>
+          <div id="commentsList" class="small"></div>
+        </div>
+      </section>
+
+      <section id="monitor" class="card shadow-sm border-0 mb-3" style="display:none">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Live Monitoring</h2>
+          <div class="row g-4">
+            <div class="col-12 col-lg-4">
+              <div class="video-col">
+                <div class="video-wrap rounded border overflow-hidden bg-black">
+                  <video id="video" autoplay playsinline width="320" height="240"></video>
+                  <canvas id="overlay" width="320" height="240"></canvas>
+                  <div id="bboxRect" aria-hidden="true"></div>
+                </div>
+                <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
+                <div class="controls d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
+                  <button id="startSession" class="btn btn-success">Start Session</button>
+                  <button id="stopSession" class="btn btn-outline-danger">Stop Session</button>
+                </div>
+                <div class="w-100">
+                  <label for="materialSelect" class="form-label small">Session Material</label>
+                  <select id="materialSelect" class="form-select form-select-sm"></select>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-8">
+              <div class="alert alert-light border mb-3 py-2 px-3" role="status">
+                Latest: <span id="latest" class="fw-medium"></span>
+              </div>
+              <div class="row g-3">
+                <div class="col-12">
+                  <div class="card h-100 border">
+                    <div class="card-body">
+                      <h3 class="h6 text-body-secondary mb-3">Timeline</h3>
+                      <canvas id="timelineChart" height="200"></canvas>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="card h-100 border">
+                    <div class="card-body">
+                      <h3 class="h6 text-body-secondary mb-3">Arousal vs Valence</h3>
+                      <canvas id="scatterChart" height="200"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="messageSection" class="mb-3">
+        <div id="appMessage" class="alert d-none mb-0" role="alert"></div>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=20260425"></script>
+  </body>
+</html>

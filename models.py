@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
@@ -23,6 +23,8 @@ class User(Base):
     consents = relationship("ConsentRecord", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user")
     emotion_logs = relationship("EmotionLog", back_populates="user")
+    material_comments = relationship("MaterialComment", back_populates="student")
+    material_activities = relationship("MaterialActivity", back_populates="student")
 
 
 class ConsentRecord(Base):
@@ -43,12 +45,16 @@ class LearningMaterial(Base):
     title = Column(String, nullable=False)
     subject = Column(String, nullable=False)
     duration_minutes = Column(Integer, nullable=True)
-    file_path = Column(String, nullable=False)
-    file_type = Column(String, nullable=False)  # pdf | video
+    file_path = Column(String, nullable=True)
+    file_type = Column(String, nullable=False)  # pdf | link | video
+    external_url = Column(String, nullable=True)
+    instruction = Column(Text, nullable=True)
     created_at = Column(DateTime, default=now_utc)
 
     teacher = relationship("User")
     assignments = relationship("MaterialAssignment", back_populates="material", cascade="all, delete-orphan")
+    comments = relationship("MaterialComment", back_populates="material", cascade="all, delete-orphan")
+    activities = relationship("MaterialActivity", back_populates="material", cascade="all, delete-orphan")
 
 
 class MaterialAssignment(Base):
@@ -89,3 +95,41 @@ class EmotionLog(Base):
 
     session = relationship("Session", back_populates="logs")
     user = relationship("User", back_populates="emotion_logs")
+
+
+class MaterialComment(Base):
+    __tablename__ = "material_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("learning_materials.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    parent_comment_id = Column(Integer, ForeignKey("material_comments.id"), nullable=True, index=True)
+    comment_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=now_utc, nullable=False)
+
+    material = relationship("LearningMaterial", back_populates="comments")
+    student = relationship("User", back_populates="material_comments")
+
+
+class MaterialActivity(Base):
+    __tablename__ = "material_activities"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    material_id = Column(Integer, ForeignKey("learning_materials.id"), nullable=False, index=True)
+    event_type = Column(String, nullable=False)  # opened | highlighted | commented
+    timestamp = Column(DateTime, default=now_utc, nullable=False, index=True)
+
+    student = relationship("User", back_populates="material_activities")
+    material = relationship("LearningMaterial", back_populates="activities")
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    entity_type = Column(String, nullable=True)
+    entity_id = Column(Integer, nullable=True)
+    detail = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=now_utc, nullable=False, index=True)
+
+    actor = relationship("User")
