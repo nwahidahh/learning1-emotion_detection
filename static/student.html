@@ -12,6 +12,7 @@
     />
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.25.2.min.js"></script>
   </head>
   <body class="bg-body-tertiary">
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
@@ -71,54 +72,74 @@
         </div>
       </section>
 
-      <section id="monitor" class="card shadow-sm border-0 mb-3" style="display:none">
-        <div class="card-body">
-          <h2 class="h5 mb-3">Live Monitoring</h2>
-          <div class="row g-4">
-            <div class="col-12 col-lg-4">
-              <div class="video-col">
-                <div class="video-wrap rounded border overflow-hidden bg-black">
-                  <video id="video" autoplay playsinline width="320" height="240"></video>
-                  <canvas id="overlay" width="320" height="240"></canvas>
-                  <div id="bboxRect" aria-hidden="true"></div>
-                </div>
-                <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
-                <div class="controls d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
-                  <button id="startSession" class="btn btn-success">Start Session</button>
-                  <button id="stopSession" class="btn btn-outline-danger">Stop Session</button>
-                </div>
-                <div class="w-100">
-                  <label for="materialSelect" class="form-label small">Session Material</label>
-                  <select id="materialSelect" class="form-select form-select-sm"></select>
-                </div>
+      <section id="monitor" class="monitor-popup" style="display:none">
+        <div class="monitor-header">
+          <div class="d-flex align-items-center gap-2">
+            <h2 class="monitor-title mb-0">Live Emotion Monitor</h2>
+            <span class="monitor-live-badge"><span class="dot"></span>LIVE</span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="monitorMinBtn" class="monitor-icon-btn" type="button" aria-label="Minimize">—</button>
+            <button id="monitorCloseBtn" class="monitor-icon-btn" type="button" aria-label="Close">✕</button>
+          </div>
+        </div>
+
+        <div id="monitorBody" class="monitor-body">
+          <div class="monitor-top-grid">
+            <div class="monitor-card monitor-camera-card p-0 overflow-hidden">
+              <div class="video-wrap monitor-video-wrap bg-black">
+                <video id="video" autoplay playsinline width="320" height="240"></video>
+                <canvas id="overlay" width="320" height="240"></canvas>
+                <div id="bboxRect" aria-hidden="true"></div>
+              </div>
+              <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
+              <div class="monitor-video-controls">
+                <span class="camera-dot">●</span>
+                <span class="small text-light-emphasis">Camera</span>
+                <button id="startSession" class="btn btn-success btn-sm ms-auto" type="button">Start</button>
+                <button id="stopSession" class="btn btn-outline-light btn-sm" type="button">Stop</button>
+              </div>
+              <div class="p-2 bg-white border-top">
+                <label for="materialSelect" class="form-label small mb-1">Session Material</label>
+                <select id="materialSelect" class="form-select form-select-sm"></select>
               </div>
             </div>
-            <div class="col-12 col-lg-8">
-              <div class="alert alert-light border mb-3 py-2 px-3" role="status">
-                Latest: <span id="latest" class="fw-medium"></span>
+
+            <div class="monitor-card monitor-summary-card p-3">
+              <h3 class="h6 mb-0">Live Emotion</h3>
+              <div class="d-flex align-items-center gap-3 mb-2">
+                <div id="liveEmotionRing" class="emotion-ring">--</div>
+                <div>
+                  <div id="liveEmotionLabel" class="fw-semibold">Neutral</div>
+                  <div id="liveEmotionPct" class="text-body-secondary small">0%</div>
+                </div>
               </div>
-              <div class="row g-3">
-                <div class="col-12">
-                  <div class="card h-100 border">
-                    <div class="card-body">
-                      <h3 class="h6 text-body-secondary mb-3">Timeline</h3>
-                      <canvas id="timelineChart" height="200"></canvas>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-12">
-                  <div class="card h-100 border">
-                    <div class="card-body">
-                      <h3 class="h6 text-body-secondary mb-3">Arousal vs Valence</h3>
-                      <canvas id="scatterChart" height="200"></canvas>
-                    </div>
-                  </div>
-                </div>
+              <div class="small">
+                <div class="d-flex justify-content-between"><span>Happy</span><span id="emoHappy">0%</span></div>
+                <div class="d-flex justify-content-between"><span>Neutral</span><span id="emoNeutral">0%</span></div>
+                <div class="d-flex justify-content-between"><span>Focused</span><span id="emoFocused">0%</span></div>
+                <div class="d-flex justify-content-between"><span>Surprised</span><span id="emoSurprised">0%</span></div>
+                <div class="d-flex justify-content-between"><span>Sad</span><span id="emoSad">0%</span></div>
+              </div>
+              <div class="alert alert-light border mt-2 mb-0 py-2 px-2 small" role="status">
+                Latest: <span id="latest" class="fw-medium"></span>
               </div>
             </div>
           </div>
+
+          <div class="monitor-card p-3 mt-2">
+            <h3 class="h6 text-body-secondary mb-2">Arousal vs Valence (Timeline)</h3>
+            <canvas id="timelineChart" height="130"></canvas>
+          </div>
+
+          <div class="monitor-card p-3 mt-2">
+            <h3 class="h6 text-body-secondary mb-2">Arousal vs Valence (Circumplex Model)</h3>
+            <div id="scatterChart" style="width:100%;height:320px;min-height:240px;"></div>
+          </div>
         </div>
       </section>
+
+      <button id="monitorOpenBtn" class="monitor-open-btn" type="button" style="display:none">Open Live Monitor</button>
 
       <section id="messageSection" class="mb-3">
         <div id="appMessage" class="alert d-none mb-0" role="alert"></div>

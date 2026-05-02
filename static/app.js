@@ -9,6 +9,8 @@ let sessionId = null;
 let captureLoop = null;
 let timelineChart = null;
 let scatterChart = null;
+const CAPTURE_INTERVAL_MS = 500;
+const MONITOR_POPUP_STATE_KEY = "monitorPopupState";
 
 let authToken = localStorage.getItem("authToken") || null;
 let currentUser = null;
@@ -224,6 +226,7 @@ async function bootstrap() {
 }
 
 async function initStudentPage() {
+  initMonitorPopupControls();
   await loadConsentStatus();
   await loadStudentMaterials();
   initCharts();
@@ -316,7 +319,8 @@ async function initStudentPage() {
       if (!resp.ok) throw new Error(data.detail || "Failed to start session");
       sessionId = data.session_id;
       if (captureLoop) clearInterval(captureLoop);
-      captureLoop = setInterval(captureAndSend, 1000);
+      await captureAndSend();
+      captureLoop = setInterval(captureAndSend, CAPTURE_INTERVAL_MS);
       showMessage(`Session started: ${sessionId}`, "success");
     } catch (err) {
       showMessage(err.message);
@@ -342,6 +346,103 @@ async function initStudentPage() {
   });
 }
 
+function initMonitorPopupControls() {
+  const monitor = el("monitor");
+  const openBtn = el("monitorOpenBtn");
+  const minBtn = el("monitorMinBtn");
+  const closeBtn = el("monitorCloseBtn");
+  if (!monitor || !openBtn || !minBtn || !closeBtn) return;
+  if (monitor.dataset.popupReady === "1") return;
+
+  const stored = localStorage.getItem(MONITOR_POPUP_STATE_KEY) || "open";
+  applyMonitorPopupState(stored, false);
+
+  openBtn.addEventListener("click", () => applyMonitorPopupState("open", true));
+  minBtn.addEventListener("click", () => {
+    const minimized = monitor.classList.contains("minimized");
+    applyMonitorPopupState(minimized ? "open" : "minimized", true);
+  });
+  closeBtn.addEventListener("click", () => applyMonitorPopupState("closed", true));
+
+  monitor.dataset.popupReady = "1";
+}
+
+function applyMonitorPopupState(state, persist = true) {
+  const monitor = el("monitor");
+  const openBtn = el("monitorOpenBtn");
+  if (!monitor || !openBtn) return;
+
+  monitor.classList.remove("minimized");
+  openBtn.style.display = "none";
+
+  if (state === "closed") {
+    monitor.style.display = "none";
+    openBtn.style.display = "inline-flex";
+  } else if (state === "minimized") {
+    monitor.style.display = "block";
+    monitor.classList.add("minimized");
+  } else {
+    monitor.style.display = "block";
+  }
+
+  if (persist) localStorage.setItem(MONITOR_POPUP_STATE_KEY, state);
+}
+
+function updateLiveEmotionSummary(data) {
+  const v = Number(data?.valence || 0);
+  const a = Number(data?.arousal || 0);
+
+  const happy = Math.max(0, Math.round(Math.max(v, 0) * 45 + Math.max(a, 0) * 35));
+  const sad = Math.max(0, Math.round(Math.max(-v, 0) * 50 + Math.max(0.55 - a, 0) * 40));
+  const surprised = Math.max(0, Math.round(Math.max(a - 0.7, 0) * 100 * (0.6 + Math.abs(v) * 0.4)));
+  const focused = Math.max(0, Math.round(Math.max(a - 0.35, 0) * 45 * (1 - Math.min(Math.abs(v), 0.9))));
+  const neutral = Math.max(0, Math.round((1 - Math.min(Math.abs(v), 1)) * (1 - Math.min(Math.abs(a - 0.5) * 1.3, 1)) * 85));
+
+  const raw = { happy, neutral, focused, surprised, sad };
+  const total = Object.values(raw).reduce((s, n) => s + n, 0) || 1;
+  const pct = Object.fromEntries(Object.entries(raw).map(([k, n]) => [k, Math.round((n / total) * 100)]));
+
+  let dominant = "neutral";
+  let dominantValue = -1;
+  for (const [key, value] of Object.entries(pct)) {
+    if (value > dominantValue) {
+      dominant = key;
+      dominantValue = value;
+    }
+  }
+
+  const labelMap = {
+    happy: "Happy",
+    neutral: "Neutral",
+    focused: "Focused",
+    surprised: "Surprised",
+    sad: "Sad",
+  };
+
+  const ring = el("liveEmotionRing");
+  const label = el("liveEmotionLabel");
+  const ratio = el("liveEmotionPct");
+  const emoHappy = el("emoHappy");
+  const emoNeutral = el("emoNeutral");
+  const emoFocused = el("emoFocused");
+  const emoSurprised = el("emoSurprised");
+  const emoSad = el("emoSad");
+  if (!ring || !label || !ratio || !emoHappy || !emoNeutral || !emoFocused || !emoSurprised || !emoSad) return;
+
+  const dominantPct = Math.max(0, Math.min(100, pct[dominant] || 0));
+  const sweep = Math.round((dominantPct / 100) * 360);
+  ring.style.background = `conic-gradient(#22c55e 0deg, #22c55e ${sweep}deg, #d1d5db ${sweep}deg, #d1d5db 360deg)`;
+  ring.textContent = `${dominantPct}%`;
+  label.textContent = labelMap[dominant] || "Neutral";
+  ratio.textContent = `${dominantPct}%`;
+
+  emoHappy.textContent = `${pct.happy || 0}%`;
+  emoNeutral.textContent = `${pct.neutral || 0}%`;
+  emoFocused.textContent = `${pct.focused || 0}%`;
+  emoSurprised.textContent = `${pct.surprised || 0}%`;
+  emoSad.textContent = `${pct.sad || 0}%`;
+}
+
 async function loadConsentStatus() {
   const consentSection = el("consentSection");
   const consentStatus = el("consentStatus");
@@ -358,13 +459,29 @@ async function loadConsentStatus() {
   if (!data || data.status !== "accepted") {
     consentSection.style.display = "block";
     monitor.style.display = "none";
+    const openBtn = el("monitorOpenBtn");
+    if (openBtn) openBtn.style.display = "none";
     consentStatus.textContent = data ? `Consent status: ${data.status}` : "Consent status: not provided.";
     return;
   }
 
   consentSection.style.display = "none";
-  monitor.style.display = "block";
+  const preferred = localStorage.getItem(MONITOR_POPUP_STATE_KEY) || "open";
+  applyMonitorPopupState(preferred, false);
   consentStatus.textContent = `Consent status: accepted (${new Date(data.timestamp).toLocaleString()})`;
+
+  // Ensure Plotly circumplex resizes / renders when monitor is shown (fixes hidden-container render issue)
+  try {
+    const sc = el("scatterChart");
+    if (sc && typeof Plotly !== "undefined" && Plotly.Plots && Plotly.Plots.resize) {
+      // small timeout to allow layout to settle
+      setTimeout(() => {
+        try {
+          Plotly.Plots.resize(sc);
+        } catch (_e) {}
+      }, 80);
+    }
+  } catch (_e) {}
 }
 
 async function loadStudentMaterials() {
@@ -800,9 +917,15 @@ async function captureAndSend() {
           latest.textContent = `valence=${data.valence.toFixed(2)} arousal=${data.arousal.toFixed(2)} source=${(data.bbox && data.bbox.source) || "none"}`;
         }
 
+        updateLiveEmotionSummary(data);
+
         drawBoundingBox(data.bbox, { width: data.frame_width, height: data.frame_height });
 
-        await apiFetch("/emotion/log", {
+        // update timeline + circumplex immediately for realtime UI
+        pushTimeline(data);
+
+        // keep logging, but do not block chart updates on network/database latency
+        apiFetch("/emotion/log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -814,9 +937,7 @@ async function captureAndSend() {
             client_timestamp: new Date().toISOString(),
             source: "server-fallback",
           }),
-        });
-
-        pushTimeline(data);
+        }).catch((_e) => {});
       } catch (err) {
         if (el("latest")) el("latest").textContent = err.message;
       }
@@ -856,49 +977,151 @@ function drawBoundingBox(bbox, frameSize) {
 function initCharts() {
   if (timelineChart && scatterChart) return;
   const timelineCanvas = el("timelineChart");
-  const scatterCanvas = el("scatterChart");
-  if (!timelineCanvas || !scatterCanvas || typeof Chart === "undefined") return;
+  const scatterDiv = el("scatterChart");
+  if (!timelineCanvas || !scatterDiv) return;
 
-  timelineChart = new Chart(timelineCanvas.getContext("2d"), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        { label: "Valence", data: [], borderColor: "blue", fill: false },
-        { label: "Arousal", data: [], borderColor: "red", fill: false },
-      ],
-    },
-    options: { animation: false },
-  });
-
-  scatterChart = new Chart(scatterCanvas.getContext("2d"), {
-    type: "scatter",
-    data: { datasets: [{ label: "Arousal vs Valence", data: [], backgroundColor: "purple" }] },
-    options: {
-      animation: false,
-      scales: {
-        x: { title: { display: true, text: "Valence (-1..1)" } },
-        y: { title: { display: true, text: "Arousal (0..1)" } },
+  // timeline chart remains Chart.js
+  if (!timelineChart && typeof Chart !== "undefined") {
+    timelineChart = new Chart(timelineCanvas.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          { label: "Valence", data: [], borderColor: "blue", fill: false },
+          { label: "Arousal", data: [], borderColor: "red", fill: false },
+        ],
       },
+      options: { animation: false },
+    });
+  }
+
+  // Arousal–Valence circumplex using Plotly
+  if (typeof Plotly === "undefined") return;
+
+  scatterChart = scatterDiv; // use DOM element as reference
+
+  const trace = {
+    x: [],
+    y: [],
+    mode: "markers",
+    type: "scatter",
+    name: "Arousal vs Valence",
+    marker: { color: "#6f42c1", size: 8, opacity: 0.9, line: { width: 0 } },
+  };
+
+  // background shapes: left (warm) and right (cool), circle boundary, and axes lines
+  const shapes = [
+    // left half soft pink/red
+    {
+      type: "rect",
+      xref: "x",
+      yref: "y",
+      x0: -1,
+      x1: 0,
+      y0: -1,
+      y1: 1,
+      fillcolor: "rgba(255,200,200,0.4)",
+      line: { width: 0 },
     },
-  });
+    // right half soft cyan/blue
+    {
+      type: "rect",
+      xref: "x",
+      yref: "y",
+      x0: 0,
+      x1: 1,
+      y0: -1,
+      y1: 1,
+      fillcolor: "rgba(200,235,255,0.45)",
+      line: { width: 0 },
+    },
+    // circular boundary (approximated by circle shape)
+    {
+      type: "circle",
+      xref: "x",
+      yref: "y",
+      x0: -1,
+      x1: 1,
+      y0: -1,
+      y1: 1,
+      line: { color: "rgba(80,80,80,0.9)", width: 2 },
+    },
+    // x and y axes (thicker zerolines)
+    { type: "line", x0: -1, x1: 1, y0: 0, y1: 0, xref: "x", yref: "y", line: { color: "#333", width: 1 } },
+    { type: "line", x0: 0, x1: 0, y0: -1, y1: 1, xref: "x", yref: "y", line: { color: "#333", width: 1 } },
+  ];
+
+  const annotations = [
+    // quadrant titles
+    { x: -0.6, y: 0.65, text: "Anger", showarrow: false, font: { size: 14, color: "#6b0300", family: "Helvetica, Arial, sans-serif" } },
+    { x: 0.6, y: 0.65, text: "Joy", showarrow: false, font: { size: 14, color: "#0b4b66", family: "Helvetica, Arial, sans-serif" } },
+    { x: -0.6, y: -0.65, text: "Sadness", showarrow: false, font: { size: 14, color: "#3a1f5a", family: "Helvetica, Arial, sans-serif" } },
+    { x: 0.6, y: -0.65, text: "Pleasure", showarrow: false, font: { size: 14, color: "#025e73", family: "Helvetica, Arial, sans-serif" } },
+    // axis end annotations
+    { x: 0, y: 1.08, text: "(active)", showarrow: false, font: { size: 12 } },
+    { x: 0, y: -1.08, text: "(passive)", showarrow: false, font: { size: 12 } },
+    { x: -1.08, y: 0, text: "(negative)", showarrow: false, font: { size: 12 } },
+    { x: 1.08, y: 0, text: "(positive)", showarrow: false, font: { size: 12 } },
+    // emotion word examples (approx locations)
+    { x: -0.75, y: 0.45, text: "furious, annoyed, disgusted", showarrow: false, font: { size: 11, color: "#6b0300" } },
+    { x: 0.7, y: 0.45, text: "excited, delighted, blissful", showarrow: false, font: { size: 11, color: "#0b4b66" } },
+    { x: -0.7, y: -0.45, text: "disappointed, depressed, bored", showarrow: false, font: { size: 11, color: "#3a1f5a" } },
+    { x: 0.7, y: -0.45, text: "serene, relaxed", showarrow: false, font: { size: 11, color: "#025e73" } },
+  ];
+
+  const layout = {
+    xaxis: {
+      range: [-1, 1],
+      zeroline: false,
+      showgrid: false,
+      title: "Valence",
+      tickmode: "array",
+      tickvals: [-1, -0.5, 0, 0.5, 1],
+      ticktext: ["-1", "-0.5", "0", "0.5", "1"],
+    },
+    yaxis: {
+      range: [-1, 1],
+      zeroline: false,
+      showgrid: false,
+      title: "Arousal",
+    },
+    shapes: shapes,
+    annotations: annotations,
+    margin: { l: 60, r: 60, t: 40, b: 60 },
+    showlegend: false,
+    hovermode: "closest",
+    // keep equal aspect ratio
+    yaxis: Object.assign({ scaleanchor: "x", scaleratio: 1 }, { range: [-1, 1], title: "Arousal" }),
+  };
+
+  Plotly.newPlot(scatterDiv, [trace], layout, { responsive: true, displayModeBar: false });
 }
 
 function pushTimeline(data) {
-  if (!timelineChart || !scatterChart) return;
+  // allow Plotly updates even if timelineChart (Chart.js) isn't initialized
+  if (!scatterChart) return;
   const t = new Date().toLocaleTimeString();
-  timelineChart.data.labels.push(t);
-  timelineChart.data.datasets[0].data.push(data.valence);
-  timelineChart.data.datasets[1].data.push(data.arousal);
-  if (timelineChart.data.labels.length > 60) {
-    timelineChart.data.labels.shift();
-    timelineChart.data.datasets.forEach((ds) => ds.data.shift());
-  }
-  timelineChart.update("none");
 
-  scatterChart.data.datasets[0].data.push({ x: data.valence, y: data.arousal });
-  if (scatterChart.data.datasets[0].data.length > 200) scatterChart.data.datasets[0].data.shift();
-  scatterChart.update("none");
+  if (timelineChart) {
+    timelineChart.data.labels.push(t);
+    timelineChart.data.datasets[0].data.push(data.valence);
+    timelineChart.data.datasets[1].data.push(data.arousal);
+    if (timelineChart.data.labels.length > 60) {
+      timelineChart.data.labels.shift();
+      timelineChart.data.datasets.forEach((ds) => ds.data.shift());
+    }
+    timelineChart.update("none");
+  }
+
+  // Update Plotly circumplex: convert arousal (0..1) to display coord (-1..1)
+  try {
+    const displayArousal = Number(data.arousal) * 2.0 - 1.0;
+    // scatterChart is the DOM node used for Plotly
+    // show only current live emotion (no history trail)
+    Plotly.restyle(scatterChart, { x: [[Number(data.valence)]], y: [[displayArousal]] }, [0]);
+  } catch (e) {
+    // silent fail to avoid breaking main flow
+  }
 }
 
 function escapeHtml(value) {
