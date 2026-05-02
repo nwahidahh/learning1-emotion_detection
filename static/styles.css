@@ -43,7 +43,9 @@ body {
 	position: fixed;
 	top: 70px;
 	right: 16px;
-	width: min(980px, calc(100vw - 24px));
+	width: 25vw;
+	min-width: 320px;
+	max-width: 25vw;
 	max-height: calc(100vh - 86px);
 	overflow: auto;
 	z-index: 1200;
@@ -102,31 +104,26 @@ body {
 }
 
 .monitor-body {
-	padding: 12px;
+	padding: 10px 12px 12px;
 }
 
 .monitor-top-grid {
 	display: grid;
-	grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.85fr);
-	gap: 12px;
+	grid-template-columns: 1fr;
+	gap: 10px;
 	align-items: stretch;
 }
 
 .monitor-card {
 	background: #fff;
 	border: 1px solid #e5e7eb;
-	border-radius: 12px;
+	border-radius: 14px;
+	overflow: hidden;
+	box-shadow: 0 4px 14px rgba(16, 24, 40, 0.05);
 }
 
 .monitor-summary-card {
-	background: transparent;
-	border: 0;
-	box-shadow: none;
-	padding: 0.5rem 0.25rem 0.5rem 0.5rem;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	gap: 0.25rem;
+	display: none;
 }
 
 .monitor-summary-card h3 {
@@ -136,14 +133,14 @@ body {
 
 .monitor-video-wrap {
 	width: 100%;
-	height: 360px;
+	height: 280px;
 	border-radius: 0;
 }
 
 .monitor-video-wrap video,
 .monitor-video-wrap #overlay {
 	width: 100%;
-	height: 360px;
+	height: 280px;
 	object-fit: cover;
 }
 
@@ -151,8 +148,35 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 8px;
+	padding: 7px 10px;
 	background: #1f2937;
+}
+
+#timelineChart {
+	display: block;
+	width: 100%;
+	height: 100px !important;
+}
+
+#scatterChart {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	height: 240px !important;
+	min-height: 220px;
+}
+
+.monitor-body .monitor-card.p-3.mt-2 {
+	padding: 0.85rem 1rem !important;
+	border-color: #e8ebf1;
+	background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+}
+
+.monitor-body .monitor-card.p-3.mt-2 h3 {
+	margin-bottom: 0.6rem !important;
+	font-size: 0.95rem;
+	font-weight: 700;
+	color: #4b5563;
 }
 
 .camera-dot {
@@ -209,6 +233,8 @@ body {
 		top: 58px;
 		right: 8px;
 		width: calc(100vw - 16px);
+		min-width: 0;
+		max-width: none;
 		max-height: calc(100vh - 66px);
 	}
 
@@ -219,7 +245,16 @@ body {
 	.monitor-video-wrap,
 	.monitor-video-wrap video,
 	.monitor-video-wrap #overlay {
-		height: 280px;
+		height: 220px;
+	}
+
+	#timelineChart {
+		height: 92px !important;
+	}
+
+	#scatterChart {
+		height: 200px !important;
+		min-height: 180px;
 	}
 }
 
@@ -248,13 +283,6 @@ body {
 	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 	pointer-events: none;
 	box-sizing: border-box;
-}
-
-/* Plotly circumplex container tweaks to avoid clipping and keep square aspect */
-#scatterChart {
-	display: block;
-	box-sizing: border-box;
-	width: 100%;
 }
 
 /* Ensure Plotly doesn't clip annotations at edges */

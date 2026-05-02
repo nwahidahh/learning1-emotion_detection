@@ -991,7 +991,24 @@ function initCharts() {
           { label: "Arousal", data: [], borderColor: "red", fill: false },
         ],
       },
-      options: { animation: false },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        elements: {
+          point: { radius: 1.5, hoverRadius: 3, borderWidth: 1 },
+        },
+        plugins: {
+          legend: {
+            labels: {
+              boxWidth: 10,
+              boxHeight: 10,
+              usePointStyle: true,
+              pointStyle: "line",
+            },
+          },
+        },
+      },
     });
   }
 
