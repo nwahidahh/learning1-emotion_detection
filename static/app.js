@@ -257,6 +257,20 @@ async function initStudentPage() {
   });
 
   el("studentMaterials")?.addEventListener("change", async () => {
+    const selectedId = Number(el("studentMaterials")?.value || 0);
+    const sidebarMaterials = el("sidebarMaterials");
+    
+    // Update sidebar active state
+    if (sidebarMaterials) {
+      const items = sidebarMaterials.querySelectorAll(".sidebar-material-item");
+      items.forEach((item) => {
+        item.classList.remove("active");
+        if (Number(item.dataset.materialId) === selectedId) {
+          item.classList.add("active");
+        }
+      });
+    }
+    
     renderSelectedMaterialDetail();
     await loadCommentsForSelectedMaterial();
   });
@@ -271,10 +285,11 @@ async function initStudentPage() {
       const resp = await apiFetch(`/materials/${material.id}/open`, { method: "POST" });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || "Failed to track material open");
-      if (material.file_type === "link" && material.external_url) {
+      if (material.file_type === "pdf") {
+        renderSelectedMaterialDetail();
+        el("materialPreview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else if (material.file_type === "link" && material.external_url) {
         window.open(material.external_url, "_blank", "noopener,noreferrer");
-      } else if (material.file_path) {
-        window.open(material.file_path.replace("./", "/"), "_blank");
       }
       await loadLastOpenedBadge();
       showMessage("Material opened and tracked.", "success");
@@ -487,6 +502,7 @@ async function loadConsentStatus() {
 async function loadStudentMaterials() {
   const studentSelect = el("studentMaterials");
   const sessionSelect = el("materialSelect");
+  const sidebarMaterials = el("sidebarMaterials");
   if (!studentSelect || !sessionSelect) return;
 
   const resp = await apiFetch("/materials");
@@ -497,6 +513,10 @@ async function loadStudentMaterials() {
 
   studentSelect.innerHTML = "";
   sessionSelect.innerHTML = '<option value="">No material selected</option>';
+  if (sidebarMaterials) {
+    sidebarMaterials.innerHTML = "";
+  }
+  
   if (studentMaterialsData.length === 0) {
     studentSelect.innerHTML = '<option value="">No assigned material</option>';
     renderSelectedMaterialDetail();
@@ -517,6 +537,25 @@ async function loadStudentMaterials() {
     sessionSelect.appendChild(optionB);
   }
 
+  // Populate sidebar materials
+  if (sidebarMaterials && studentMaterialsData.length > 0) {
+    sidebarMaterials.innerHTML = studentMaterialsData
+      .map(
+        (item) => `
+        <div class="sidebar-material-item" data-material-id="${item.id}" onclick="selectMaterialFromSidebar(${item.id})">
+          <div class="sidebar-material-title">${escapeHtml(item.title || "Untitled")}</div>
+          <div class="sidebar-material-subject">${escapeHtml(item.subject || "General")}</div>
+        </div>
+      `
+      )
+      .join("");
+    // Mark first item as active
+    const firstItem = sidebarMaterials.querySelector(".sidebar-material-item");
+    if (firstItem) {
+      firstItem.classList.add("active");
+    }
+  }
+
   renderSelectedMaterialDetail();
   await loadCommentsForSelectedMaterial();
   await loadLastOpenedBadge();
@@ -527,12 +566,37 @@ function getSelectedStudentMaterial() {
   return studentMaterialsData.find((m) => m.id === selectedId) || null;
 }
 
+function selectMaterialFromSidebar(materialId) {
+  const studentSelect = el("studentMaterials");
+  const sidebarMaterials = el("sidebarMaterials");
+  
+  if (studentSelect) {
+    studentSelect.value = String(materialId);
+  }
+  
+  // Update sidebar active state
+  if (sidebarMaterials) {
+    const items = sidebarMaterials.querySelectorAll(".sidebar-material-item");
+    items.forEach((item) => {
+      item.classList.remove("active");
+      if (Number(item.dataset.materialId) === materialId) {
+        item.classList.add("active");
+      }
+    });
+  }
+  
+  renderSelectedMaterialDetail();
+  loadCommentsForSelectedMaterial();
+}
+
 function renderSelectedMaterialDetail() {
   const detail = el("materialDetail");
+  const preview = el("materialPreview");
   if (!detail) return;
   const material = getSelectedStudentMaterial();
   if (!material) {
     detail.textContent = "No material selected.";
+    if (preview) preview.innerHTML = "";
     return;
   }
 
@@ -544,6 +608,14 @@ function renderSelectedMaterialDetail() {
     <div><strong>Location:</strong> ${escapeHtml(location)}</div>
     <div><strong>Instruction:</strong> ${escapeHtml(material.instruction || "-")}</div>
   `;
+
+  if (!preview) return;
+  if (material.file_type === "pdf" && material.file_path) {
+    const src = encodeURI(material.file_path.replace("./", "/"));
+    preview.innerHTML = `<iframe title="Material PDF" src="${src}"></iframe>`;
+  } else {
+    preview.innerHTML = "";
+  }
 }
 
 async function loadCommentsForSelectedMaterial() {
@@ -978,7 +1050,7 @@ function initCharts() {
   if (timelineChart && scatterChart) return;
   const timelineCanvas = el("timelineChart");
   const scatterDiv = el("scatterChart");
-  if (!timelineCanvas || !scatterDiv) return;
+  if (!timelineCanvas) return;
 
   // timeline chart remains Chart.js
   if (!timelineChart && typeof Chart !== "undefined") {
@@ -995,6 +1067,17 @@ function initCharts() {
         animation: false,
         responsive: true,
         maintainAspectRatio: false,
+        scales: {
+          x: {
+            display: false,
+            grid: { display: false },
+          },
+          y: {
+            min: -1,
+            max: 1,
+            ticks: { stepSize: 0.5 },
+          },
+        },
         elements: {
           point: { radius: 1.5, hoverRadius: 3, borderWidth: 1 },
         },
@@ -1013,7 +1096,7 @@ function initCharts() {
   }
 
   // Arousal–Valence circumplex using Plotly
-  if (typeof Plotly === "undefined") return;
+  if (!scatterDiv || typeof Plotly === "undefined") return;
 
   scatterChart = scatterDiv; // use DOM element as reference
 
@@ -1115,8 +1198,7 @@ function initCharts() {
 }
 
 function pushTimeline(data) {
-  // allow Plotly updates even if timelineChart (Chart.js) isn't initialized
-  if (!scatterChart) return;
+  // allow timeline updates even if Plotly is not available
   const t = new Date().toLocaleTimeString();
 
   if (timelineChart) {
@@ -1131,13 +1213,15 @@ function pushTimeline(data) {
   }
 
   // Update Plotly circumplex: convert arousal (0..1) to display coord (-1..1)
-  try {
-    const displayArousal = Number(data.arousal) * 2.0 - 1.0;
-    // scatterChart is the DOM node used for Plotly
-    // show only current live emotion (no history trail)
-    Plotly.restyle(scatterChart, { x: [[Number(data.valence)]], y: [[displayArousal]] }, [0]);
-  } catch (e) {
-    // silent fail to avoid breaking main flow
+  if (scatterChart && typeof Plotly !== "undefined") {
+    try {
+      const displayArousal = Number(data.arousal) * 2.0 - 1.0;
+      // scatterChart is the DOM node used for Plotly
+      // show only current live emotion (no history trail)
+      Plotly.restyle(scatterChart, { x: [[Number(data.valence)]], y: [[displayArousal]] }, [0]);
+    } catch (e) {
+      // silent fail to avoid breaking main flow
+    }
   }
 }
 
