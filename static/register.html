@@ -4,68 +4,128 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Register — Emotion Monitor</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    />
+    <link rel="stylesheet" href="/static/login.css" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body class="bg-body-tertiary">
-    <main class="container py-4 py-md-5">
-      <div class="row justify-content-center">
-        <div class="col-12 col-sm-10 col-md-8 col-lg-6">
-          <div class="text-center mb-4">
-            <h1 class="h3 fw-semibold mb-2">Emotion & Engagement Monitor</h1>
-            <p class="text-body-secondary mb-0">Create your learning platform account</p>
-          </div>
+    <main class="login-screen">
+      <div class="login-background">
+        <span class="blob blob-top"></span>
+        <span class="blob blob-bottom"></span>
+        <span class="blob blob-mid"></span>
+      </div>
 
-          <section id="authSection" class="card shadow-sm border-0">
-            <div class="card-body p-4">
-              <h2 class="h5 mb-3">Register</h2>
+      <section class="login-card" aria-labelledby="registerTitle">
+        <div class="login-illustration">
+          <div class="illustration-shell">
+            <div class="illustration-badge">
+              <span>Emotion & Engagement Monitor</span>
+              <strong>Create Your Account</strong>
+            </div>
 
-              <div class="row g-3">
-                <div class="col-12">
-                  <label for="registerName" class="form-label">Name</label>
-                  <input id="registerName" type="text" class="form-control" placeholder="Your full name" />
-                </div>
-
-                <div class="col-12">
-                  <label for="registerEmail" class="form-label">Email</label>
-                  <input id="registerEmail" type="email" class="form-control" placeholder="name@example.com" />
-                </div>
-
-                <div class="col-12">
-                  <label for="registerPassword" class="form-label">Password</label>
-                  <input id="registerPassword" type="password" class="form-control" placeholder="Minimum 8 characters" />
-                </div>
-
-                <div class="col-md-6">
-                  <label for="registerRole" class="form-label">Role</label>
-                  <select id="registerRole" class="form-select">
-                    <option value="student">Student</option>
-                    <option value="teacher">Teacher</option>
-                  </select>
-                </div>
-
-                <div class="col-12 d-grid">
-                  <button id="registerBtn" class="btn btn-primary">Create Account</button>
+            <div class="illustration-panel">
+              <div class="illustration-glow"></div>
+              <div class="illustration-device">
+                <div class="device-screen">
+                  <div class="device-header">
+                    <span class="status-pill"></span>
+                    <span class="status-pill"></span>
+                    <span class="status-pill"></span>
+                  </div>
+                  <div class="device-content">
+                    <div class="avatar"></div>
+                    <div class="speech">
+                      <span class="speech-line"></span>
+                      <span class="speech-line short"></span>
+                    </div>
+                    <div class="emotion-wave"></div>
+                    <div class="emotion-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <p class="small mb-0 mt-3 text-body-secondary">
-                Already have an account?
-                <a href="/static/login.html" class="link-primary text-decoration-none">Login</a>
-              </p>
-            </div>
-          </section>
+              <div class="illustration-student">
+                <div class="student-head"></div>
+                <div class="student-body"></div>
+                <div class="student-arm"></div>
+                <div class="student-book"></div>
+              </div>
 
-          <section id="messageSection" class="mt-3">
-            <div id="appMessage" class="alert d-none mb-0" role="alert"></div>
+              <div class="illustration-lock">
+                <div class="lock-body"></div>
+                <div class="lock-ring"></div>
+              </div>
+
+              <div class="illustration-orbit"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="login-form" id="authSection">
+          <div class="form-header">
+            <h1 id="registerTitle">Create Your Account</h1>
+            <p>Join the platform and start your journey today.</p>
+          </div>
+
+          <div class="input-group">
+            <label for="registerName">Name</label>
+            <div class="input-shell">
+              <span class="input-icon" aria-hidden="true">N</span>
+              <input id="registerName" type="text" placeholder="Your full name" autocomplete="name" />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="registerEmail">Email</label>
+            <div class="input-shell">
+              <span class="input-icon" aria-hidden="true">@</span>
+              <input id="registerEmail" type="email" placeholder="name@example.com" autocomplete="email" />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="registerPassword">Password</label>
+            <div class="input-shell">
+              <span class="input-icon" aria-hidden="true">*</span>
+              <input id="registerPassword" type="password" placeholder="Minimum 8 characters" autocomplete="new-password" />
+            </div>
+            <div id="passwordStrength" style="height:6px; background:#e8f1ff; border-radius:6px; overflow:hidden; margin-top:8px;">
+              <div id="passwordStrengthBar" style="width:0%; height:100%; background:linear-gradient(90deg,#ff9a9e,#3a7bff);"></div>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label for="registerRole">Role</label>
+            <div class="input-shell">
+              <span class="input-icon" aria-hidden="true">R</span>
+              <select id="registerRole" style="border:none; background:transparent; width:100%; outline:none; font-size:0.95rem;">
+                <option value="student">Student</option>
+                <option value="teacher">Teacher</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group" style="display:flex; align-items:center; gap:10px;">
+            <input id="registerConsent" type="checkbox" />
+            <label for="registerConsent" style="font-size:0.85rem; color:var(--ink-muted);">I agree to the use of camera-based emotion monitoring and the collection of my data for improving learning experiences. I have read and agree to the <a href="#">Privacy Policy</a> and <a href="#">Terms of Service</a>.</label>
+          </div>
+
+          <div class="button-row" style="margin-top:8px;">
+            <button id="registerBtn" class="btn primary">Create Account</button>
+            <a class="btn ghost" href="/static/login.html">Login</a>
+          </div>
+
+          <p class="form-footer">Emotion & Engagement Monitor</p>
+
+          <section id="messageSection">
+            <div id="appMessage" class="alert" role="alert"></div>
           </section>
         </div>
-      </div>
+      </section>
     </main>
 
     <script
