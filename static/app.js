@@ -407,13 +407,16 @@ function updateLiveEmotionSummary(data) {
   const v = Number(data?.valence || 0);
   const a = Number(data?.arousal || 0);
 
-  const happy = Math.max(0, Math.round(Math.max(v, 0) * 45 + Math.max(a, 0) * 35));
-  const sad = Math.max(0, Math.round(Math.max(-v, 0) * 50 + Math.max(0.55 - a, 0) * 40));
-  const surprised = Math.max(0, Math.round(Math.max(a - 0.7, 0) * 100 * (0.6 + Math.abs(v) * 0.4)));
-  const focused = Math.max(0, Math.round(Math.max(a - 0.35, 0) * 45 * (1 - Math.min(Math.abs(v), 0.9))));
-  const neutral = Math.max(0, Math.round((1 - Math.min(Math.abs(v), 1)) * (1 - Math.min(Math.abs(a - 0.5) * 1.3, 1)) * 85));
+  const anger = Math.max(0, Math.round(Math.max(-v - 0.12, 0) * Math.max(a - 0.2, 0) * 140));
+  const contempt = Math.max(0, Math.round(Math.max(-v - 0.18, 0) * Math.max(0.55 - a, 0) * 135));
+  const disgust = Math.max(0, Math.round(Math.max(-v - 0.2, 0) * Math.max(a - 0.25, 0) * (1 - Math.min(Math.abs(a - 0.55) * 1.15, 1)) * 150));
+  const fear = Math.max(0, Math.round(Math.max(-v, 0) * Math.max(a - 0.45, 0) * 140));
+  const happiness = Math.max(0, Math.round(Math.max(v, 0) * (0.55 + a * 0.45) * 145));
+  const neutral = Math.max(0, Math.round((1 - Math.min(Math.abs(v), 1)) * (1 - Math.min(Math.abs(a - 0.5) * 1.7, 1)) * 110));
+  const sadness = Math.max(0, Math.round(Math.max(-v, 0) * Math.max(0.6 - a, 0) * 155));
+  const surprise = Math.max(0, Math.round(Math.max(a - 0.55, 0) * (1 - Math.min(Math.abs(v) * 0.8, 1)) * 160));
 
-  const raw = { happy, neutral, focused, surprised, sad };
+  const raw = { anger, contempt, disgust, fear, happiness, neutral, sadness, surprise };
   const total = Object.values(raw).reduce((s, n) => s + n, 0) || 1;
   const pct = Object.fromEntries(Object.entries(raw).map(([k, n]) => [k, Math.round((n / total) * 100)]));
 
@@ -427,22 +430,28 @@ function updateLiveEmotionSummary(data) {
   }
 
   const labelMap = {
-    happy: "Happy",
+    anger: "Anger",
+    contempt: "Contempt",
+    disgust: "Disgust",
+    fear: "Fear",
+    happiness: "Happiness",
     neutral: "Neutral",
-    focused: "Focused",
-    surprised: "Surprised",
-    sad: "Sad",
+    sadness: "Sadness",
+    surprise: "Surprise",
   };
 
   const ring = el("liveEmotionRing");
   const label = el("liveEmotionLabel");
   const ratio = el("liveEmotionPct");
-  const emoHappy = el("emoHappy");
+  const emoAnger = el("emoAnger");
+  const emoContempt = el("emoContempt");
+  const emoDisgust = el("emoDisgust");
+  const emoFear = el("emoFear");
+  const emoHappiness = el("emoHappiness");
   const emoNeutral = el("emoNeutral");
-  const emoFocused = el("emoFocused");
-  const emoSurprised = el("emoSurprised");
-  const emoSad = el("emoSad");
-  if (!ring || !label || !ratio || !emoHappy || !emoNeutral || !emoFocused || !emoSurprised || !emoSad) return;
+  const emoSadness = el("emoSadness");
+  const emoSurprise = el("emoSurprise");
+  if (!ring || !label || !ratio || !emoAnger || !emoContempt || !emoDisgust || !emoFear || !emoHappiness || !emoNeutral || !emoSadness || !emoSurprise) return;
 
   const dominantPct = Math.max(0, Math.min(100, pct[dominant] || 0));
   const sweep = Math.round((dominantPct / 100) * 360);
@@ -451,11 +460,14 @@ function updateLiveEmotionSummary(data) {
   label.textContent = labelMap[dominant] || "Neutral";
   ratio.textContent = `${dominantPct}%`;
 
-  emoHappy.textContent = `${pct.happy || 0}%`;
+  emoAnger.textContent = `${pct.anger || 0}%`;
+  emoContempt.textContent = `${pct.contempt || 0}%`;
+  emoDisgust.textContent = `${pct.disgust || 0}%`;
+  emoFear.textContent = `${pct.fear || 0}%`;
+  emoHappiness.textContent = `${pct.happiness || 0}%`;
   emoNeutral.textContent = `${pct.neutral || 0}%`;
-  emoFocused.textContent = `${pct.focused || 0}%`;
-  emoSurprised.textContent = `${pct.surprised || 0}%`;
-  emoSad.textContent = `${pct.sad || 0}%`;
+  emoSadness.textContent = `${pct.sadness || 0}%`;
+  emoSurprise.textContent = `${pct.surprise || 0}%`;
 }
 
 async function loadConsentStatus() {
