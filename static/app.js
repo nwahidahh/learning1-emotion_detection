@@ -327,12 +327,8 @@ async function initStudentPage() {
       const resp = await apiFetch(`/materials/${material.id}/open`, { method: "POST" });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.detail || "Failed to track material open");
-      if (material.file_type === "pdf") {
-        renderSelectedMaterialDetail();
-        el("materialPreview")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else if (material.file_type === "link" && material.external_url) {
-        window.open(material.external_url, "_blank", "noopener,noreferrer");
-      }
+      renderSelectedMaterialDetail();
+      el("materialPreview")?.scrollIntoView({ behavior: "smooth", block: "start" });
       await loadLastOpenedBadge();
       showMessage("Material opened and tracked.", "success");
     } catch (err) {
@@ -665,10 +661,62 @@ function renderSelectedMaterialDetail() {
 
   if (!preview) return;
   if (material.file_type === "pdf" && material.file_path) {
-    const src = encodeURI(material.file_path.replace("./", "/"));
+    const src = getPublicMaterialUrl(material.file_path);
     preview.innerHTML = `<iframe title="Material PDF" src="${src}"></iframe>`;
+  } else if (material.file_type === "link" && material.external_url) {
+    const embed = getEmbedUrl(material.external_url);
+    if (embed) {
+      preview.innerHTML = `<iframe title="Material Video" src="${escapeHtml(embed)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    } else {
+      const href = escapeHtml(material.external_url);
+      preview.innerHTML = `
+        <div class="d-flex flex-column gap-2 p-2 border rounded bg-white">
+          <div class="text-body-secondary small">This link cannot be embedded, so it is shown below.</div>
+          <a href="${href}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm align-self-start">Open link</a>
+        </div>
+      `;
+    }
   } else {
     preview.innerHTML = "";
+  }
+}
+
+function getPublicMaterialUrl(rawPath) {
+  if (!rawPath) return "";
+  const cleaned = String(rawPath).trim();
+  if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("/uploads/")) {
+    return encodeURI(cleaned);
+  }
+  const withoutLeadingDot = cleaned.replace(/^\.\//, "");
+  if (withoutLeadingDot.startsWith("uploads/")) {
+    return encodeURI(`/${withoutLeadingDot}`);
+  }
+  return encodeURI(cleaned);
+}
+
+function getEmbedUrl(rawUrl) {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    const hostname = url.hostname.replace(/^www\./, "");
+
+    if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+      const videoId = url.searchParams.get("v");
+      if (videoId) return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}`;
+    }
+
+    if (hostname === "youtu.be") {
+      const videoId = url.pathname.split("/").filter(Boolean)[0];
+      if (videoId) return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}`;
+    }
+
+    if (hostname === "youtube.com" && url.pathname.startsWith("/embed/")) {
+      return url.toString();
+    }
+
+    return rawUrl;
+  } catch (_err) {
+    return null;
   }
 }
 
