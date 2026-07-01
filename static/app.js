@@ -9,6 +9,13 @@ let sessionId = null;
 let captureLoop = null;
 let timelineChart = null;
 let scatterChart = null;
+let teacherDashboardData = null;
+let teacherClassTimelineChart = null;
+let teacherClassScatterChart = null;
+let teacherStudentTimelineChart = null;
+let teacherStudentScatterChart = null;
+let teacherSelectedStudentId = null;
+let teacherSelectedSelfReport = "";
 const CAPTURE_INTERVAL_MS = 500;
 const MONITOR_POPUP_STATE_KEY = "monitorPopupState";
 
@@ -778,9 +785,28 @@ async function loadLastOpenedBadge() {
 
 async function initTeacherPage() {
   await teacherLoadMaterials();
+  await teacherLoadDashboard();
 
   el("teacherMaterialType")?.addEventListener("change", toggleTeacherUploadInputs);
   toggleTeacherUploadInputs();
+
+  el("teacherTopRefreshBtn")?.addEventListener("click", async () => {
+    await teacherLoadDashboard(teacherSelectedStudentId);
+  });
+
+  el("refreshTeacherDashboardBtn")?.addEventListener("click", async () => {
+    await teacherLoadDashboard(teacherSelectedStudentId);
+  });
+
+  el("teacherMaterialFilter")?.addEventListener("change", async () => {
+    teacherSelectedStudentId = Number(el("teacherStudentFilter")?.value || teacherSelectedStudentId || 0) || null;
+    await teacherLoadDashboard(teacherSelectedStudentId);
+  });
+
+  el("teacherStudentFilter")?.addEventListener("change", async () => {
+    teacherSelectedStudentId = Number(el("teacherStudentFilter")?.value || 0) || null;
+    await teacherLoadStudentReport(teacherSelectedStudentId);
+  });
 
   el("teacherUploadBtn")?.addEventListener("click", async () => {
     try {
@@ -806,6 +832,7 @@ async function initTeacherPage() {
       if (!resp.ok) throw new Error(data.detail || "Upload failed");
       showMessage("Material uploaded.", "success");
       await teacherLoadMaterials(data.id);
+      await teacherLoadDashboard(teacherSelectedStudentId);
     } catch (err) {
       showMessage(err.message);
     }
@@ -842,6 +869,7 @@ async function initTeacherPage() {
       showMessage("Material updated.", "success");
       await teacherLoadMaterials(material.id);
       await teacherLoadComments();
+      await teacherLoadDashboard(teacherSelectedStudentId);
     } catch (err) {
       showMessage(err.message);
     }
@@ -865,6 +893,7 @@ async function initTeacherPage() {
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.detail || "Assignment failed");
       showMessage(data.already_assigned ? "Student already assigned." : "Material assigned.", "success");
+      await teacherLoadDashboard(teacherSelectedStudentId);
     } catch (err) {
       showMessage(err.message);
     }
@@ -874,6 +903,7 @@ async function initTeacherPage() {
   el("teacherMaterialSelect")?.addEventListener("change", async () => {
     teacherFillEditForm();
     await teacherLoadComments();
+    await teacherLoadDashboard(teacherSelectedStudentId);
   });
 
   teacherFillEditForm();
@@ -952,6 +982,400 @@ async function teacherLoadComments() {
     `
     )
     .join("");
+}
+
+function teacherLocalStorageKey(prefix, studentId) {
+  return `${prefix}:${studentId}`;
+}
+
+function teacherFormatValue(value, digits = 2) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue.toFixed(digits) : "0.00";
+}
+
+function teacherFormatTime(value) {
+  if (!value) return "-";
+  try {
+    return new Date(value).toLocaleString();
+  } catch (_err) {
+    return "-";
+  }
+}
+
+function teacherEmotionLabel(valence, arousal) {
+  if (valence > 0.2 && arousal > 0.55) return "engaged";
+  if (valence > 0.2 && arousal <= 0.55) return "calm";
+  if (valence < -0.25 && arousal > 0.55) return "possible confusion";
+  if (valence < -0.35 && arousal > 0.45) return "possible frustration";
+  if (arousal < 0.35) return "low engagement";
+  return "steady";
+}
+
+function teacherSetChipState(container, activeValue) {
+  if (!container) return;
+  container.querySelectorAll("[data-self-report]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.selfReport === activeValue);
+  });
+}
+
+function teacherClearChart(chartRef) {
+  if (chartRef && typeof chartRef.destroy === "function") {
+    chartRef.destroy();
+  }
+}
+
+function teacherRenderLineChart(canvasId, chartRefName, labels, valenceSeries, arousalSeries) {
+  const canvas = el(canvasId);
+  if (!canvas || typeof Chart === "undefined") return null;
+  const existing = chartRefName === "class" ? teacherClassTimelineChart : teacherStudentTimelineChart;
+  teacherClearChart(existing);
+  const nextChart = new Chart(canvas.getContext("2d"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Valence", data: valenceSeries, borderColor: "#2f6fed", backgroundColor: "rgba(47,111,237,0.12)", tension: 0.28, fill: true },
+        { label: "Arousal", data: arousalSeries, borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,0.12)", tension: 0.28, fill: true },
+      ],
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: { min: -1, max: 1, ticks: { stepSize: 0.5 } },
+      },
+      plugins: {
+        legend: { labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+      },
+    },
+  });
+  if (chartRefName === "class") teacherClassTimelineChart = nextChart;
+  else teacherStudentTimelineChart = nextChart;
+  return nextChart;
+}
+
+function teacherRenderScatter(divId, chartRefName, points) {
+  const target = el(divId);
+  if (!target || typeof Plotly === "undefined") return;
+  const x = points.map((point) => Number(point.valence || 0));
+  const y = points.map((point) => Number(point.arousal || 0) * 2 - 1);
+  const text = points.map((point) => `${point.label || "Learner"} • ${teacherFormatTime(point.timestamp)}`);
+  const trace = {
+    x,
+    y,
+    text,
+    mode: "markers",
+    type: "scatter",
+    marker: { color: chartRefName === "class" ? "#6f42c1" : "#0ea5e9", size: 8, opacity: 0.9 },
+  };
+  const layout = {
+    margin: { l: 50, r: 20, t: 20, b: 45 },
+    xaxis: { range: [-1, 1], title: "Valence", zeroline: false, showgrid: false },
+    yaxis: { range: [-1, 1], title: "Arousal", zeroline: false, showgrid: false },
+    showlegend: false,
+    hovermode: "closest",
+  };
+  Plotly.newPlot(target, [trace], layout, { responsive: true, displayModeBar: false });
+  if (chartRefName === "class") teacherClassScatterChart = target;
+  else teacherStudentScatterChart = target;
+}
+
+function teacherRenderRoster(students) {
+  const roster = el("teacherStudentRoster");
+  if (!roster) return;
+  if (!Array.isArray(students) || !students.length) {
+    roster.innerHTML = '<div class="text-body-secondary small">No students are available yet.</div>';
+    return;
+  }
+
+  roster.innerHTML = students
+    .map((student) => {
+      const flags = Array.isArray(student.support_flags) ? student.support_flags : [];
+      const flagText = flags.slice(0, 2).join(" • ");
+      return `
+        <button class="teacher-roster-item" type="button" data-student-id="${student.id}">
+          <div class="teacher-roster-name">${escapeHtml(student.name || `Student ${student.id}`)}</div>
+          <div class="teacher-roster-meta">${student.assignment_count || 0} assignments • ${teacherEmotionLabel(student.valence_mean, student.arousal_mean)}</div>
+          <div class="teacher-roster-footnote">${escapeHtml(flagText || "No current support flag")}</div>
+        </button>
+      `;
+    })
+    .join("");
+
+  roster.querySelectorAll("[data-student-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const studentId = Number(button.dataset.studentId || 0);
+      if (!studentId) return;
+      teacherSelectedStudentId = studentId;
+      const studentFilter = el("teacherStudentFilter");
+      if (studentFilter) studentFilter.value = String(studentId);
+      await teacherLoadStudentReport(studentId);
+    });
+  });
+}
+
+function teacherPopulateFilters(data) {
+  const materialFilter = el("teacherMaterialFilter");
+  const studentFilter = el("teacherStudentFilter");
+  if (materialFilter) {
+    const previous = materialFilter.value;
+    materialFilter.innerHTML = '<option value="">All materials</option>';
+    for (const material of Array.isArray(data?.materials) ? data.materials : []) {
+      const option = document.createElement("option");
+      option.value = String(material.id);
+      option.textContent = `${material.title} (${material.file_type})`;
+      materialFilter.appendChild(option);
+    }
+    if (previous) materialFilter.value = previous;
+  }
+
+  const studentOptions = Array.isArray(data?.students) ? data.students : [];
+  if (studentFilter) {
+    const previous = studentFilter.value;
+    studentFilter.innerHTML = '<option value="">Choose a student</option>';
+    for (const student of studentOptions) {
+      const option = document.createElement("option");
+      option.value = String(student.id);
+      option.textContent = `${student.name || `Student ${student.id}`} • ${teacherEmotionLabel(student.valence_mean, student.arousal_mean)}`;
+      studentFilter.appendChild(option);
+    }
+    if (previous) studentFilter.value = previous;
+  }
+}
+
+function teacherRenderSummary(data) {
+  const materials = Array.isArray(data?.materials) ? data.materials : [];
+  const students = Array.isArray(data?.students) ? data.students : [];
+  const assignmentSummary = data?.assignment_summary || {};
+  const supportCount = students.filter((student) => Array.isArray(student.support_flags) && student.support_flags.some((flag) => flag !== "steady" && flag !== "calm / steady")).length;
+
+  const materialsMetric = el("teacherMetricMaterials");
+  const assignmentsMetric = el("teacherMetricAssignments");
+  const studentsMetric = el("teacherMetricStudents");
+  const supportMetric = el("teacherMetricSupport");
+  const dashboardStatus = el("teacherDashboardStatus");
+  const assignmentSummaryChip = el("teacherAssignmentSummary");
+
+  if (materialsMetric) materialsMetric.textContent = String(materials.length);
+  if (assignmentsMetric) assignmentsMetric.textContent = String(assignmentSummary.total || 0);
+  if (studentsMetric) studentsMetric.textContent = String(students.length);
+  if (supportMetric) supportMetric.textContent = String(supportCount);
+  if (dashboardStatus) {
+    dashboardStatus.textContent = `${data?.count || 0} emotion logs • ${teacherFormatValue(data?.valence_mean || 0)} valence • ${teacherFormatValue(data?.arousal_mean || 0)} arousal`;
+  }
+  if (assignmentSummaryChip) {
+    assignmentSummaryChip.textContent = `${assignmentSummary.active || 0} active • ${assignmentSummary.pending || 0} pending • ${assignmentSummary.completed || 0} completed`;
+  }
+
+  const consentNote = el("teacherConsentNote");
+  if (consentNote) {
+    consentNote.textContent = data?.consent_note || "Show emotion data only after active consent is confirmed for the learner session.";
+  }
+}
+
+function teacherRenderClassCharts(data) {
+  const recentLogs = Array.isArray(data?.recent_logs) ? data.recent_logs.slice().reverse() : [];
+  const labels = recentLogs.map((row) => new Date(row.timestamp).toLocaleTimeString());
+  const valences = recentLogs.map((row) => Number(row.valence || 0));
+  const arousals = recentLogs.map((row) => Number(row.arousal || 0) * 2 - 1);
+  teacherRenderLineChart("teacherClassTimeline", "class", labels, valences, arousals);
+  teacherRenderScatter(
+    "teacherClassScatter",
+    "class",
+    recentLogs.map((row) => ({
+      valence: row.valence,
+      arousal: row.arousal,
+      label: row.student_name || `Student ${row.student_id}`,
+      timestamp: row.timestamp,
+    }))
+  );
+}
+
+function teacherRenderProgressTable(data) {
+  const tbody = el("teacherProgressTable");
+  if (!tbody) return;
+  const students = Array.isArray(data?.students) ? data.students : [];
+  if (!students.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-body-secondary">No student data yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = students
+    .map((student) => {
+      const support = Array.isArray(student.support_flags) ? student.support_flags[0] || "steady" : "steady";
+      return `
+        <tr class="teacher-progress-row" data-student-id="${student.id}">
+          <td>
+            <div class="fw-semibold">${escapeHtml(student.name || `Student ${student.id}`)}</div>
+            <div class="small text-body-secondary">${escapeHtml(student.email || "")}</div>
+          </td>
+          <td><span class="teacher-chip teacher-chip-soft">${escapeHtml(student.status || "pending")}</span></td>
+          <td>${student.assignment_count || 0}</td>
+          <td>${student.opened_count || 0}</td>
+          <td>${student.completed_count || 0}</td>
+          <td>${Math.round((Number(student.focus_ratio || 0) * 100))}%</td>
+          <td>${escapeHtml(support)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  tbody.querySelectorAll("[data-student-id]").forEach((row) => {
+    row.addEventListener("click", async () => {
+      const studentId = Number(row.dataset.studentId || 0);
+      if (!studentId) return;
+      teacherSelectedStudentId = studentId;
+      const studentFilter = el("teacherStudentFilter");
+      if (studentFilter) studentFilter.value = String(studentId);
+      await teacherLoadStudentReport(studentId);
+    });
+  });
+}
+
+function teacherRenderMaterialStatus(data) {
+  const materials = Array.isArray(data?.materials) ? data.materials : [];
+  const materialFilter = el("teacherMaterialFilter");
+  const teacherMaterialSelect = el("teacherMaterialSelect");
+  if (materialFilter && !materialFilter.value && materials[0]) materialFilter.value = String(materials[0].id);
+  if (teacherMaterialSelect && !teacherMaterialSelect.value && materials[0]) teacherMaterialSelect.value = String(materials[0].id);
+}
+
+function teacherSuggestionList(student) {
+  const suggestions = [];
+  const flags = Array.isArray(student?.support_flags) ? student.support_flags : [];
+  if (flags.includes("possible confusion")) suggestions.push("Offer a short recap or a worked example after class.");
+  if (flags.includes("low engagement")) suggestions.push("Break the task into smaller steps and check in earlier.");
+  if (flags.includes("possible frustration")) suggestions.push("Pause for encouragement and remove unnecessary task load.");
+  if (!suggestions.length) suggestions.push("Continue monitoring. The current pattern looks steady.");
+  return suggestions;
+}
+
+function teacherCompareSelfReport(student, selfReportText) {
+  const emotionWord = teacherEmotionLabel(student?.valence_mean || 0, student?.arousal_mean || 0);
+  const report = String(selfReportText || "").toLowerCase();
+  if (!report) return `Self-report not captured yet. The current emotion summary looks ${emotionWord}.`;
+  if (report.includes("confus")) return `Self-report mentions confusion, which aligns with the ${emotionWord} signal.`;
+  if (report.includes("frustrat")) return `Self-report mentions frustration, which aligns with the ${emotionWord} signal.`;
+  if (report.includes("focus") || report.includes("engag")) return `Self-report suggests attention or engagement, while the emotion summary looks ${emotionWord}.`;
+  if (report.includes("calm") || report.includes("fine")) return `Self-report sounds calm, and the emotion summary looks ${emotionWord}.`;
+  return `Self-report recorded. The current emotion summary still reads as ${emotionWord}, so compare it with your lesson context.`;
+}
+
+async function teacherLoadDashboard(preferredStudentId = null) {
+  const materialFilter = Number(el("teacherMaterialFilter")?.value || 0) || null;
+  const studentFilter = Number(preferredStudentId || el("teacherStudentFilter")?.value || 0) || null;
+  const params = new URLSearchParams();
+  if (materialFilter) params.set("material_id", String(materialFilter));
+  if (studentFilter) params.set("student_id", String(studentFilter));
+
+  const resp = await apiFetch(`/teacher/dashboard${params.toString() ? `?${params.toString()}` : ""}`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || "Failed to load teacher dashboard");
+
+  teacherDashboardData = data;
+  teacherPopulateFilters(data);
+  teacherRenderSummary(data);
+  teacherRenderProgressTable(data);
+  teacherRenderRoster(data.students || []);
+  teacherRenderClassCharts(data);
+  teacherRenderMaterialStatus(data);
+
+  const currentStudentId = preferredStudentId || teacherSelectedStudentId || Number(el("teacherStudentFilter")?.value || 0) || (data.students && data.students[0] ? data.students[0].id : 0);
+  if (currentStudentId) {
+    teacherSelectedStudentId = currentStudentId;
+    const studentFilter = el("teacherStudentFilter");
+    if (studentFilter) studentFilter.value = String(currentStudentId);
+    await teacherLoadStudentReport(currentStudentId, materialFilter);
+  } else {
+    teacherRenderEmptyStudentState();
+  }
+}
+
+function teacherRenderEmptyStudentState() {
+  const title = el("teacherSelectedStudentTitle");
+  const meta = el("teacherSelectedStudentMeta");
+  const consent = el("teacherSelectedStudentConsent");
+  const summary = el("teacherSelectedStudentSummary");
+  const note = el("teacherSelectedStudentNote");
+  const support = el("teacherStudentSupportList");
+  if (title) title.textContent = "Select a student";
+  if (meta) meta.textContent = "Choose a learner from the table or dropdown.";
+  if (consent) consent.textContent = "Consent pending";
+  if (summary) {
+    summary.innerHTML = '<tr><td colspan="2" class="text-body-secondary">The student summary will appear here after selection.</td></tr>';
+  }
+  if (note) note.textContent = "Select a learner to see a short, supportive interpretation and suggested follow-up.";
+  if (support) support.textContent = "Select a learner to see support-oriented suggestions.";
+}
+
+async function teacherLoadStudentReport(studentId, materialId = null) {
+  if (!studentId) {
+    teacherRenderEmptyStudentState();
+    return;
+  }
+
+  const params = new URLSearchParams();
+  params.set("student_id", String(studentId));
+  if (materialId) params.set("material_id", String(materialId));
+
+  const resp = await apiFetch(`/student/dashboard?${params.toString()}`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || "Failed to load student report");
+
+  const student = (teacherDashboardData?.students || []).find((item) => Number(item.id) === Number(studentId)) || { id: studentId };
+  const title = el("teacherSelectedStudentTitle");
+  const meta = el("teacherSelectedStudentMeta");
+  const consent = el("teacherSelectedStudentConsent");
+  const summary = el("teacherSelectedStudentSummary");
+  const note = el("teacherSelectedStudentNote");
+  const support = el("teacherStudentSupportList");
+
+  if (title) title.textContent = student.name || `Student ${studentId}`;
+  if (meta) meta.textContent = `${student.assignment_count || 0} assignments • ${student.completed_count || 0} completed • focus ${Math.round((Number(student.focus_ratio || 0) * 100))}%`;
+  if (consent) {
+    consent.textContent = student.consent_active ? "Consent active" : "Consent required";
+    consent.classList.toggle("teacher-chip-warning", !student.consent_active);
+  }
+
+  const timelineValues = Array.isArray(data.times) ? data.times : [];
+  const valences = Array.isArray(data.valences) ? data.valences : [];
+  const arousals = Array.isArray(data.arousals) ? data.arousals.map((value) => Number(value) * 2 - 1) : [];
+
+  const emotionWord = teacherEmotionLabel(student.valence_mean || 0, student.arousal_mean || 0);
+  const supportFlags = Array.isArray(student.support_flags) ? student.support_flags : [];
+  const durationText = data.times && data.times.length > 1 ? `${Math.max(1, Math.round((new Date(data.times[data.times.length - 1]) - new Date(data.times[0])) / 60000))} min observed` : "Insufficient duration data";
+  const tableRows = [
+    ["Emotion summary", emotionWord],
+    ["Observed focus ratio", `${Math.round((Number(student.focus_ratio || data.focus_ratio || 0) * 100))}%`],
+    ["Timeline coverage", durationText],
+    ["Valence mean", teacherFormatValue(student.valence_mean || 0)],
+    ["Arousal mean", teacherFormatValue(student.arousal_mean || 0)],
+    ["Open / completed", `${student.opened_count || 0} opened • ${student.completed_count || 0} completed`],
+    ["Support cue", supportFlags.join(", ") || "steady"],
+    ["Consent", student.consent_active ? "Active" : "Required"],
+  ];
+  if (summary) {
+    summary.innerHTML = tableRows
+      .map(
+        ([label, value]) => `
+          <tr>
+            <th scope="row">${escapeHtml(label)}</th>
+            <td>${escapeHtml(value)}</td>
+          </tr>
+        `
+      )
+      .join("");
+  }
+  if (note) {
+    note.textContent = `This summary is a support cue only. ${supportFlags.some((flag) => flag !== "steady") ? "Possible follow-up may help." : "The current pattern looks stable."}`;
+  }
+  if (support) {
+    support.innerHTML = teacherSuggestionList(student)
+      .map((item) => `<div class="teacher-support-item">${escapeHtml(item)}</div>`)
+      .join("");
+  }
 }
 
 async function initAdminPage() {

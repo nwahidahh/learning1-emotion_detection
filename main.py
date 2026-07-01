@@ -204,6 +204,29 @@ def user_has_active_consent(db: DBSession, user_id: int) -> bool:
     return bool(latest and latest.status == "accepted")
 
 
+def _support_flags_for_emotion(valence: float, arousal: float, focus_ratio: float) -> List[str]:
+    flags: List[str] = []
+    if valence < -0.25 and arousal > 0.55:
+        flags.append("possible confusion")
+    if valence < -0.35 and arousal > 0.45:
+        flags.append("possible frustration")
+    if arousal < 0.35 and focus_ratio < 0.45:
+        flags.append("low engagement")
+    if abs(valence) < 0.15 and 0.35 <= arousal <= 0.65:
+        flags.append("calm / steady")
+    return flags or ["steady"]
+
+
+def _status_from_student_signals(open_count: int, completed_count: int, total_assignments: int) -> str:
+    if total_assignments == 0:
+        return "unassigned"
+    if completed_count >= total_assignments:
+        return "completed"
+    if open_count > 0:
+        return "active"
+    return "pending"
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
@@ -1233,7 +1256,11 @@ def teacher_dashboard(
     db: DBSession = Depends(get_db),
 ):
     query = db.query(EmotionLog)
+    teacher_material_query = db.query(LearningMaterial)
+    allowed_ids: List[int] = []
+
     if current_user.role == "teacher":
+        teacher_material_query = teacher_material_query.filter(LearningMaterial.teacher_id == current_user.id)
         assigned_student_ids = (
             db.query(MaterialAssignment.student_id)
             .join(LearningMaterial, LearningMaterial.id == MaterialAssignment.material_id)
@@ -1249,8 +1276,15 @@ def teacher_dashboard(
                 "arousal_mean": 0.0,
                 "student_ids": [],
                 "material_id": material_id,
+                "materials": [],
+                "students": [],
+                "recent_logs": [],
+                "assignment_summary": {"total": 0, "active": 0, "pending": 0, "completed": 0},
+                "consent_note": "Show emotion data only after active consent is confirmed for the learner session.",
             }
         query = query.filter(EmotionLog.student_id.in_(allowed_ids))
+    else:
+        teacher_material_query = teacher_material_query.order_by(LearningMaterial.created_at.desc())
 
     if student_id is not None:
         query = query.filter(EmotionLog.student_id == student_id)
@@ -1261,12 +1295,185 @@ def teacher_dashboard(
     logs = query.all()
     v = [l.valence for l in logs]
     a = [l.arousal for l in logs]
+
+    teacher_materials = teacher_material_query.order_by(LearningMaterial.created_at.desc()).all()
+    material_ids = [material.id for material in teacher_materials]
+
+    materials_payload = []
+    assignment_summary = {"total": 0, "active": 0, "pending": 0, "completed": 0}
+
+    for material in teacher_materials:
+        assignments = db.query(MaterialAssignment).filter(MaterialAssignment.material_id == material.id).all()
+        assigned_student_ids = [assignment.student_id for assignment in assignments]
+        assignment_count = len(assignments)
+        open_count = (
+            db.query(func.count(MaterialActivity.id))
+            .filter(
+                MaterialActivity.material_id == material.id,
+                MaterialActivity.event_type == "opened",
+            )
+            .scalar()
+            or 0
+        )
+        comment_count = db.query(func.count(MaterialComment.id)).filter(MaterialComment.material_id == material.id).scalar() or 0
+        completed_count = (
+            db.query(func.count(Session.id))
+            .filter(Session.material_id == material.id, Session.end_time.isnot(None))
+            .scalar()
+            or 0
+        )
+        last_activity = (
+            db.query(func.max(MaterialActivity.timestamp))
+            .filter(MaterialActivity.material_id == material.id)
+            .scalar()
+        )
+        status = _status_from_student_signals(open_count, completed_count, assignment_count)
+        assignment_summary["total"] += assignment_count
+        if status in assignment_summary:
+            assignment_summary[status] += 1
+
+        materials_payload.append(
+            {
+                "id": material.id,
+                "title": material.title,
+                "subject": material.subject,
+                "file_type": material.file_type,
+                "duration_minutes": material.duration_minutes,
+                "assignment_count": assignment_count,
+                "assigned_student_ids": assigned_student_ids,
+                "open_count": open_count,
+                "comment_count": comment_count,
+                "completed_count": completed_count,
+                "status": status,
+                "last_activity_at": last_activity,
+            }
+        )
+
+    students_payload = []
+    student_rows: List[User] = []
+    if material_ids:
+        student_rows = (
+            db.query(User)
+            .join(MaterialAssignment, MaterialAssignment.student_id == User.id)
+            .join(LearningMaterial, LearningMaterial.id == MaterialAssignment.material_id)
+            .filter(LearningMaterial.teacher_id == current_user.id, User.role == "student")
+            .distinct()
+            .all()
+        )
+
+    for student in student_rows:
+        student_assignments = (
+            db.query(MaterialAssignment)
+            .join(LearningMaterial, LearningMaterial.id == MaterialAssignment.material_id)
+            .filter(LearningMaterial.teacher_id == current_user.id, MaterialAssignment.student_id == student.id)
+            .count()
+        )
+        opened_count = (
+            db.query(func.count(MaterialActivity.id))
+            .join(LearningMaterial, LearningMaterial.id == MaterialActivity.material_id)
+            .filter(
+                LearningMaterial.teacher_id == current_user.id,
+                MaterialActivity.student_id == student.id,
+                MaterialActivity.event_type == "opened",
+            )
+            .scalar()
+            or 0
+        )
+        completed_count = (
+            db.query(func.count(Session.id))
+            .join(LearningMaterial, LearningMaterial.id == Session.material_id)
+            .filter(LearningMaterial.teacher_id == current_user.id, Session.student_id == student.id, Session.end_time.isnot(None))
+            .scalar()
+            or 0
+        )
+        comment_count = (
+            db.query(func.count(MaterialComment.id))
+            .join(LearningMaterial, LearningMaterial.id == MaterialComment.material_id)
+            .filter(LearningMaterial.teacher_id == current_user.id, MaterialComment.student_id == student.id)
+            .scalar()
+            or 0
+        )
+
+        student_logs = db.query(EmotionLog).filter(EmotionLog.student_id == student.id)
+        if material_id is not None:
+            student_logs = student_logs.join(Session, Session.id == EmotionLog.session_id).filter(Session.material_id == material_id)
+        student_logs = student_logs.order_by(EmotionLog.timestamp.asc()).all()
+        student_values = [row.valence for row in student_logs]
+        student_arousals = [row.arousal for row in student_logs]
+        focus_hits = sum(1 for valence_value, arousal_value in zip(student_values, student_arousals) if arousal_value > 0.4 and valence_value > -0.2)
+        focus_ratio = focus_hits / len(student_logs) if student_logs else 0.0
+        valence_mean = statistics.mean(student_values) if student_values else 0.0
+        arousal_mean = statistics.mean(student_arousals) if student_arousals else 0.0
+        latest_activity = (
+            db.query(func.max(MaterialActivity.timestamp))
+            .filter(MaterialActivity.student_id == student.id)
+            .scalar()
+        )
+        active_consent = user_has_active_consent(db, student.id)
+        support_flags = _support_flags_for_emotion(valence_mean, arousal_mean, focus_ratio)
+        status = _status_from_student_signals(opened_count, completed_count, student_assignments)
+
+        students_payload.append(
+            {
+                "id": student.id,
+                "name": student.name,
+                "email": student.email,
+                "assignment_count": student_assignments,
+                "opened_count": opened_count,
+                "completed_count": completed_count,
+                "comment_count": comment_count,
+                "log_count": len(student_logs),
+                "valence_mean": valence_mean,
+                "arousal_mean": arousal_mean,
+                "focus_ratio": focus_ratio,
+                "consent_active": active_consent,
+                "support_flags": support_flags,
+                "status": status,
+                "latest_activity_at": latest_activity,
+            }
+        )
+
+    recent_rows = (
+        db.query(EmotionLog, User, Session, LearningMaterial)
+        .join(User, User.id == EmotionLog.student_id)
+        .outerjoin(Session, Session.id == EmotionLog.session_id)
+        .outerjoin(LearningMaterial, LearningMaterial.id == Session.material_id)
+    )
+    if current_user.role == "teacher":
+        recent_rows = recent_rows.filter(EmotionLog.student_id.in_(allowed_ids))
+    if student_id is not None:
+        recent_rows = recent_rows.filter(EmotionLog.student_id == student_id)
+    if material_id is not None:
+        recent_rows = recent_rows.filter(Session.material_id == material_id)
+    recent_rows = recent_rows.order_by(EmotionLog.timestamp.desc()).limit(40).all()
+
+    recent_logs = [
+        {
+            "timestamp": log.timestamp,
+            "student_id": student.id,
+            "student_name": student.name,
+            "material_id": session.material_id if session else None,
+            "material_title": material.title if material else None,
+            "valence": log.valence,
+            "arousal": log.arousal,
+            "confidence": log.confidence,
+            "model_version": log.model_version,
+            "source": log.source,
+        }
+        for log, student, session, material in recent_rows
+    ]
+
     return {
         "count": len(logs),
         "valence_mean": statistics.mean(v) if v else 0.0,
         "arousal_mean": statistics.mean(a) if a else 0.0,
         "student_ids": sorted(list({l.student_id for l in logs})),
         "material_id": material_id,
+        "materials": materials_payload,
+        "students": students_payload,
+        "recent_logs": recent_logs,
+        "assignment_summary": assignment_summary,
+        "consent_note": "Show emotion data only after active consent is confirmed for the learner session.",
     }
 
 
